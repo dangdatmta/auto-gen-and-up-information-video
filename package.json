@@ -1,0 +1,15 @@
+{
+  "name": "vnexpress-hot-news-video",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "vnexpress:generate": "node scripts/vnexpress-hot-news.mjs --skip-render",
+    "vnexpress:render": "node scripts/vnexpress-hot-news.mjs",
+    "vnexpress:morning": "node scripts/vnexpress-hot-news.mjs --slot 0700",
+    "vnexpress:evening": "node scripts/vnexpress-hot-news.mjs --slot 1900",
+    "vnexpress:morning:upload": "node scripts/vnexpress-hot-news.mjs --slot 0700 --upload",
+    "vnexpress:evening:upload": "node scripts/vnexpress-hot-news.mjs --slot 1900 --upload",
+    "vnexpress:upload:dry-run": "node scripts/vnexpress-hot-news.mjs --skip-render --dry-run-upload"
+  }
+}
