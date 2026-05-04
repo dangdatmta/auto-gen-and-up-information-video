@@ -48,6 +48,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ── Maximize Build Space (Swap) ───────────────────────────────
+      # Render video tốn rất nhiều RAM, GitHub runner chỉ có 7GB.
+      # Thêm 6GB swap để tránh lỗi OOM (Out of Memory) gây sập Chrome/FFmpeg.
+      - name: Maximize Build Space
+        run: |
+          sudo swapoff -a
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 6G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h
+
       # ── 2. Setup Node.js 22 ────────────────────────────────────
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -138,6 +151,9 @@ jobs:
         env:
           UPLOAD_ENABLED: "true"
           # PUPPETEER_EXECUTABLE_PATH được set ở bước cài Chrome (GITHUB_ENV)
+          HYPERFRAMES_QUALITY: "medium"
+          # Truyền trực tiếp flags cho Puppeteer qua biến môi trường này
+          CHROME_FLAGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer --single-process --font-render-hinting=none"
           # ── Credentials từ GitHub Secrets ──
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}

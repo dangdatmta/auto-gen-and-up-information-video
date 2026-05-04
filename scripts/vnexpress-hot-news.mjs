@@ -586,7 +586,10 @@ function renderWithHyperframes(outDir) {
     throw new Error("Cannot render: ffmpeg and ffprobe must be on PATH for HyperFrames rendering.");
   }
   const output = path.join(outDir, "final.mp4");
-  const result = spawnSync("npx", ["hyperframes", "render", "--output", output, "--fps", String(FPS), "--quality", "high"], {
+  // HYPERFRAMES_QUALITY: "high" (mặc định) hoặc "medium"/"low" cho môi trường CI ít RAM
+  const quality = process.env.HYPERFRAMES_QUALITY || "high";
+  console.log(`[render] quality=${quality}, output=${output}`);
+  const result = spawnSync("npx", ["hyperframes", "render", "--output", output, "--fps", String(FPS), "--quality", quality], {
     cwd: outDir,
     stdio: "inherit",
     shell: true
@@ -595,6 +598,7 @@ function renderWithHyperframes(outDir) {
   verifyOutput(output);
   return output;
 }
+
 
 function verifyOutput(output) {
   const result = spawnSync("ffprobe", [
