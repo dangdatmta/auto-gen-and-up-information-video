@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  # ── Sáng: generate + render + upload ──────────────────────────────────────
+  vnexpress-morning:
+    build: .
+    env_file: .env
+    volumes:
+      - ./assets:/app/assets      # chứa background01.mp3
+      - ./outputs:/app/outputs    # output video được ghi vào đây
+    command: ["--slot", "0700", "--upload"]
+
+  # ── Tối: generate + render + upload ───────────────────────────────────────
+  vnexpress-evening:
+    build: .
+    env_file: .env
+    volumes:
+      - ./assets:/app/assets
+      - ./outputs:/app/outputs
+    command: ["--slot", "1900", "--upload"]
+
+  # ── Chỉ generate (không render, không upload) — test nhanh ────────────────
+  vnexpress-generate:
+    build: .
+    env_file: .env
+    volumes:
+      - ./assets:/app/assets
+      - ./outputs:/app/outputs
+    command: ["--skip-render"]
+
+  # ── Dry-run upload (validate credentials, không gọi API thật) ─────────────
+  vnexpress-dry-run:
+    build: .
+    env_file: .env
+    volumes:
+      - ./assets:/app/assets
+      - ./outputs:/app/outputs
+    command: ["--slot", "0700", "--skip-render", "--dry-run-upload"]

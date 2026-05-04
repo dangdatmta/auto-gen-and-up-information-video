@@ -1,90 +1,183 @@
 # VnExpress Hot News Video Automation
 
-This workspace builds a vertical MP4 from VnExpress "Tin noi bat" RSS and can upload it to Facebook Reels, YouTube Shorts, and TikTok.
+Tự động tạo video dọc MP4 từ RSS VnExpress "Tin nổi bật" và upload lên Facebook Reels, YouTube Shorts, TikTok.
 
 ## What It Produces
 
-- `1080x1920`, `30fps`, about `83s`
-- 10 news scenes, 8 seconds each
-- a short subscribe/follow end screen
-- background music from `E:\20.tainguyen\background01.mp3`
-- article images as animated full-screen backgrounds when available
-- watermark: `@tintucchatluong`
-- outputs under `outputs/vnexpress/YYYY-MM-DD/0700/` or `outputs/vnexpress/YYYY-MM-DD/1900/`
+- `1080x1920`, `30fps`, khoảng `83s`
+- 10 cảnh tin tức, mỗi cảnh 8 giây
+- Màn hình subscribe/follow cuối video
+- Nhạc nền từ `assets/background01.mp3` (hoặc cấu hình qua `BACKGROUND_AUDIO_PATH`)
+- Ảnh bài báo làm background động toàn màn hình khi có
+- Watermark: `@tintucchatluong`
+- Output tại `outputs/vnexpress/YYYY-MM-DD/0700/` hoặc `outputs/vnexpress/YYYY-MM-DD/1900/`
 
-Each run writes:
+Mỗi lần chạy tạo ra:
 
-- `index.html` - HyperFrames HTML composition
-- `news.json` - source metadata, article title hooks, leads, and downloaded image paths
-- `caption.txt` - fixed social caption
-- `upload-report.json` - per-platform upload result when upload is requested
-- `upload-errors.json` - per-platform upload errors when any API call fails
-- `final.mp4` - rendered video, when HyperFrames/FFmpeg are available
-- `error.log` - written on failure
+- `index.html` — HyperFrames HTML composition
+- `news.json` — metadata, hook, lead, đường dẫn ảnh đã tải
+- `caption.txt` — caption cố định cho mạng xã hội
+- `upload-report.json` — kết quả upload từng nền tảng
+- `upload-errors.json` — lỗi upload (nếu có)
+- `final.mp4` — video đã render (khi HyperFrames/FFmpeg sẵn sàng)
+- `error.log` — ghi khi thất bại
 
 ## Requirements
 
-- Node.js 22 or newer
+- Node.js 22 hoặc mới hơn
 - `npx`
-- FFmpeg and FFprobe on PATH
-- HyperFrames runnable with `npx hyperframes`
-- background music file at `E:\20.tainguyen\background01.mp3`
-- `.env` copied from `.env.example` with OAuth/API credentials and `UPLOAD_ENABLED=true`
+- FFmpeg và FFprobe trên PATH
+- HyperFrames: `npx hyperframes`
+- File nhạc nền (xem phần cấu hình bên dưới)
+- `.env` copy từ `.env.example` với credentials OAuth/API và `UPLOAD_ENABLED=true`
 
-HyperFrames environment check:
+Kiểm tra HyperFrames:
+
+```bash
+npx hyperframes doctor
+```
+
+### Cài đặt trên macOS
+
+```bash
+# Node.js >= 22
+brew install node
+
+# FFmpeg
+brew install ffmpeg
+
+# Kiểm tra
+node --version    # v22+
+ffmpeg -version
+npx hyperframes doctor
+```
+
+### Cài đặt trên Windows
 
 ```powershell
-npx hyperframes doctor
+# Node.js >= 22: tải từ https://nodejs.org hoặc winget
+winget install OpenJS.NodeJS.LTS
+
+# FFmpeg: tải từ https://ffmpeg.org/download.html, thêm vào PATH
+```
+
+## Cấu hình nhạc nền
+
+Có 2 cách cấu hình file nhạc nền `background01.mp3`:
+
+**Cách 1 (khuyến nghị):** Đặt file vào `assets/background01.mp3` trong thư mục repo
+```
+auto-gen-and-up-information-video/
+└── assets/
+    └── background01.mp3   ← đặt file nhạc vào đây
+```
+
+**Cách 2:** Dùng biến môi trường trong `.env`
+```env
+# macOS/Linux
+BACKGROUND_AUDIO_PATH=/Users/yourname/music/background01.mp3
+
+# Windows
+BACKGROUND_AUDIO_PATH=E:\20.tainguyen\background01.mp3
 ```
 
 ## Commands
 
-Generate metadata and composition only:
+### macOS / Linux
 
-```powershell
-.\Run-VnExpressHotNews.ps1 -Slot 0700 -SkipRender
+Generate metadata (không render):
+
+```bash
+./run.sh --slot 0700 --skip-render
 ```
 
-Generate and render the morning video:
+Generate và render video buổi sáng:
+
+```bash
+./run.sh --slot 0700
+```
+
+Generate và render video buổi tối:
+
+```bash
+./run.sh --slot 1900
+```
+
+Generate, render và upload buổi sáng:
+
+```bash
+./run.sh --slot 0700 --upload
+```
+
+Validate upload config (không gọi API thật):
+
+```bash
+./run.sh --slot 0700 --skip-render --dry-run-upload
+```
+
+### Windows (PowerShell)
 
 ```powershell
 .\Run-VnExpressHotNews.ps1 -Slot 0700
-```
-
-Generate and render the evening video:
-
-```powershell
-.\Run-VnExpressHotNews.ps1 -Slot 1900
-```
-
-Generate, render, and upload the morning video:
-
-```powershell
-.\Run-VnExpressHotNews.ps1 -Slot 0700 -Upload
-```
-
-Validate upload configuration without calling platform APIs:
-
-```powershell
+.\Run-VnExpressHotNews.ps1 -Slot 1900 -Upload
 .\Run-VnExpressHotNews.ps1 -Slot 0700 -SkipRender -DryRunUpload
 ```
 
-Equivalent package scripts are available when `node` and `npm` are both on PATH:
+### npm scripts (đa nền tảng)
 
-```powershell
+```bash
 npm run vnexpress:morning
 npm run vnexpress:evening
 npm run vnexpress:morning:upload
 npm run vnexpress:evening:upload
+npm run vnexpress:upload:dry-run
+```
+
+## Docker (đa nền tảng)
+
+Đặt `background01.mp3` vào thư mục `assets/`, copy `.env.example` thành `.env`:
+
+```bash
+cp .env.example .env
+mkdir -p assets outputs
+# copy file nhạc nền vào assets/background01.mp3
+```
+
+Build image:
+
+```bash
+docker compose build
+```
+
+Chạy:
+
+```bash
+# Buổi sáng (generate + render + upload)
+docker compose run --rm vnexpress-morning
+
+# Buổi tối
+docker compose run --rm vnexpress-evening
+
+# Chỉ generate, không render (test nhanh)
+docker compose run --rm vnexpress-generate
+
+# Dry-run upload
+docker compose run --rm vnexpress-dry-run
+```
+
+Hoặc dùng `docker run` trực tiếp:
+
+```bash
+docker compose run --rm vnexpress-morning --slot 0700 --skip-render
 ```
 
 ## Upload Status
 
-- Facebook Page Reels publishes public immediately.
-- YouTube uploads with `privacyStatus=private`.
-- TikTok uses `SELF_ONLY` and fails TikTok only if the creator account does not expose that privacy option.
-- If one platform fails, the other platforms continue and the error is written to `upload-errors.json`.
+- **Facebook Page Reels**: publish public ngay lập tức.
+- **YouTube**: upload với `privacyStatus=private`.
+- **TikTok**: dùng `SELF_ONLY`; thất bại nếu tài khoản creator không hỗ trợ privacy option đó.
+- Nếu một nền tảng lỗi, các nền tảng còn lại vẫn tiếp tục; lỗi được ghi vào `upload-errors.json`.
 
 ## Notes
 
-The script opens each VnExpress article and uses the article `h1` as the hook and the lead paragraph as the summary. If a feed item has no image, it tries the article `og:image`; if that also fails, the scene uses an animated fallback background. Article photos are used directly with motion and overlays, not blurred.
+Script mở từng bài báo VnExpress, lấy `h1` làm hook và đoạn lead làm summary. Nếu feed item không có ảnh, thử `og:image` của bài báo; nếu vẫn không có, dùng background animated fallback. Ảnh bài báo được dùng trực tiếp với motion và overlay, không blur.

@@ -6,16 +6,20 @@ import process from "node:process";
 import { uploadToPlatforms, writeCaption } from "./upload-platforms.mjs";
 
 const RSS_URL = "https://vnexpress.net/rss/tin-noi-bat.rss";
-const BACKGROUND_AUDIO = "E:\\20.tainguyen\\background01.mp3";
+// Đọc từ env var, fallback về assets/background01.mp3 trong thư mục repo
+const BACKGROUND_AUDIO =
+  process.env.BACKGROUND_AUDIO_PATH ||
+  path.resolve("assets", "background01.mp3");
 const WATERMARK = "@tintucchatluong";
 const WIDTH = 1080;
 const HEIGHT = 1920;
 const FPS = 30;
 const SCENE_SECONDS = 8;
 const NEWS_COUNT = 10;
+const INTRO_SECONDS = 3;
 const OUTRO_SECONDS = 3;
 const NEWS_SECONDS = NEWS_COUNT * SCENE_SECONDS;
-const TOTAL_SECONDS = NEWS_SECONDS + OUTRO_SECONDS;
+const TOTAL_SECONDS = INTRO_SECONDS + NEWS_SECONDS + OUTRO_SECONDS;
 
 const args = new Set(process.argv.slice(2));
 const slotArg = valueAfter("--slot");
@@ -255,7 +259,7 @@ function wordSpans(value = "") {
 
 function renderComposition(items) {
   const sceneHtml = items.map((item, i) => {
-    const start = i * SCENE_SECONDS;
+    const start = INTRO_SECONDS + i * SCENE_SECONDS;
     const hasImage = Boolean(item.localImage);
     const titleSize = titleFontSize(item.hook || item.title);
     const leadSize = summaryFontSize(item.summary);
@@ -274,7 +278,21 @@ function renderComposition(items) {
         </div>
       </section>`;
   }).join("\n");
-  const outroStart = NEWS_SECONDS;
+  const outroStart = INTRO_SECONDS + NEWS_SECONDS;
+  const introHtml = `
+    <section id="intro" class="clip intro-scene" data-start="0" data-duration="${INTRO_SECONDS}">
+      <div class="intro-bg"></div>
+      <div class="intro-ring intro-ring-1"></div>
+      <div class="intro-ring intro-ring-2"></div>
+      <div class="intro-bar"></div>
+      <div class="intro-inner">
+        <div class="intro-badge"><span>VnExpress</span></div>
+        <h1 class="intro-title">10 tin tức nóng nhất<br>trong các giờ qua</h1>
+        <div class="intro-channel">${escapeHtml(WATERMARK)}</div>
+        <div class="intro-divider"></div>
+        <p class="intro-sub">Cập nhật mỗi sáng &amp; tối</p>
+      </div>
+    </section>`;
 
   return `<!doctype html>
 <html lang="vi">
@@ -297,13 +315,13 @@ function renderComposition(items) {
     .accent-a { width: 300px; height: 300px; right: -90px; top: 210px; border: 3px solid rgba(255,255,255,.2); }
     .accent-b { width: 14px; height: 780px; left: 54px; top: 210px; background: linear-gradient(#ff4e28, #ffd166, #00aeff); transform: rotate(8deg); }
     .scene-count { position: absolute; top: 78px; left: 74px; color: rgba(255,255,255,.9); font-weight: 900; font-size: 32px; letter-spacing: 0; text-shadow: 0 6px 24px rgba(0,0,0,.62); }
-    .content { position: absolute; left: 74px; right: 74px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 32px; max-height: 1280px; }
+    .content { position: absolute; left: 60px; right: 60px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: stretch; gap: 32px; max-height: 1280px; }
     .source-row { display: flex; justify-content: space-between; gap: 20px; width: 100%; color: rgba(255,255,255,.9); font-size: 28px; line-height: 1; font-weight: 900; text-shadow: 0 5px 22px rgba(0,0,0,.7); }
     .source-row span:first-child { padding: 13px 18px; background: #ff4e28; border-radius: 8px; color: #fff; }
     .source-row span:last-child { padding-top: 13px; }
-    .hook-title { margin: 0; color: #fff7df; line-height: 1.08; font-weight: 950; letter-spacing: 0; text-wrap: balance; text-shadow: 0 9px 34px rgba(0,0,0,.78), 0 0 28px rgba(255,78,40,.28); max-height: 620px; overflow: hidden; }
+    .hook-title { margin: 0; color: #fff7df; line-height: 1.08; font-weight: 950; letter-spacing: 0; text-wrap: balance; text-align: left; text-shadow: 0 9px 34px rgba(0,0,0,.78), 0 0 28px rgba(255,78,40,.28); max-height: 620px; overflow: hidden; }
     .hook-title span { display: inline-block; transform-origin: 50% 80%; }
-    .lead { margin: 0; color: #9ee7ff; line-height: 1.28; font-weight: 820; max-width: 925px; max-height: 470px; overflow: hidden; text-shadow: 0 6px 26px rgba(0,0,0,.78), 0 0 22px rgba(0,174,255,.24); border-left: 9px solid #00aeff; padding-left: 24px; }
+    .lead { margin: 0; color: #9ee7ff; line-height: 1.28; font-weight: 820; max-width: 925px; max-height: 470px; overflow: hidden; text-align: justify; text-shadow: 0 6px 26px rgba(0,0,0,.78), 0 0 22px rgba(0,174,255,.24); }
     .outro { position: absolute; inset: 0; opacity: 0; overflow: hidden; background: radial-gradient(circle at 20% 20%, rgba(255,78,40,.5), transparent 32%), radial-gradient(circle at 80% 72%, rgba(0,174,255,.45), transparent 36%), linear-gradient(145deg, #070a0f, #17191f 46%, #070a0f); }
     .outro::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.25), rgba(0,0,0,.68)); }
     .outro-inner { position: absolute; left: 74px; right: 74px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 34px; }
@@ -314,10 +332,25 @@ function renderComposition(items) {
     .watermark { position: absolute; right: 52px; bottom: 58px; z-index: 100; color: rgba(255,255,255,.82); font-size: 30px; font-weight: 800; text-shadow: 0 4px 22px rgba(0,0,0,.7); }
     .progress { position: absolute; left: 52px; right: 52px; bottom: 38px; height: 8px; background: rgba(255,255,255,.16); overflow: hidden; border-radius: 8px; z-index: 101; }
     .progress-inner { height: 100%; width: 0%; background: linear-gradient(90deg, #ff4e28, #ffd166, #00aeff); border-radius: inherit; }
+    /* ─── Intro Scene ─────────────────────────────────────────────────── */
+    .intro-scene { position: absolute; inset: 0; opacity: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; z-index: 10; }
+    .intro-bg { position: absolute; inset: 0; background: radial-gradient(circle at 20% 25%, rgba(255,78,40,.6), transparent 42%), radial-gradient(circle at 80% 75%, rgba(0,174,255,.5), transparent 42%), linear-gradient(155deg, #060910, #12161e 50%, #060910); }
+    .intro-ring { position: absolute; border-radius: 50%; border: 2px solid rgba(255,255,255,.1); top: 50%; left: 50%; transform: translate(-50%,-50%); opacity: 0; }
+    .intro-ring-1 { width: 720px; height: 720px; border-color: rgba(255,78,40,.35); }
+    .intro-ring-2 { width: 960px; height: 960px; border-color: rgba(0,174,255,.22); }
+    .intro-bar { position: absolute; width: 10px; height: 520px; left: 54px; top: 50%; transform: translateY(-50%); background: linear-gradient(180deg,#ff4e28,#ffd166,#00aeff); border-radius: 10px; box-shadow: 0 0 32px rgba(255,78,40,.5); }
+    .intro-inner { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 40px; padding: 0 100px; }
+    .intro-badge { display: inline-flex; align-items: center; justify-content: center; padding: 16px 44px; background: #ff4e28; border-radius: 14px; box-shadow: 0 12px 48px rgba(255,78,40,.55); }
+    .intro-badge span { color: #fff; font-size: 40px; font-weight: 900; letter-spacing: 2px; }
+    .intro-title { margin: 0; color: #fff7df; font-size: 90px; font-weight: 950; line-height: 1.06; text-align: center; text-shadow: 0 14px 56px rgba(0,0,0,.85), 0 0 48px rgba(255,78,40,.4); letter-spacing: -1px; opacity: 0; }
+    .intro-channel { color: rgba(255,255,255,.95); font-size: 48px; font-weight: 800; letter-spacing: 3px; text-shadow: 0 6px 28px rgba(0,0,0,.7); opacity: 0; }
+    .intro-divider { width: 140px; height: 5px; background: linear-gradient(90deg, #ff4e28, #ffd166, #00aeff); border-radius: 5px; transform-origin: center; transform: scaleX(0); }
+    .intro-sub { margin: 0; color: rgba(158,231,255,.85); font-size: 38px; font-weight: 700; text-shadow: 0 4px 18px rgba(0,0,0,.6); opacity: 0; }
   </style>
 </head>
 <body>
   <div id="stage" data-composition-id="root" data-start="0" data-duration="${TOTAL_SECONDS}" data-width="${WIDTH}" data-height="${HEIGHT}">
+    ${introHtml}
     ${sceneHtml}
     <section id="outro-subscribe" class="clip outro" data-start="${outroStart}" data-duration="${OUTRO_SECONDS}">
       <div class="accent accent-a"></div>
@@ -343,8 +376,21 @@ function renderComposition(items) {
 
     if (window.gsap) {
       const master = gsap.timeline({ paused: true });
+      // ── Intro animation ──
+      const introEl = document.getElementById('intro');
+      if (introEl) {
+        master.set(introEl, { opacity: 1 }, 0);
+        master.fromTo('#intro .intro-ring', { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.8, ease: 'power2.out' }, 0);
+        master.fromTo('#intro .intro-badge', { y: -50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, ease: 'back.out(1.7)' }, 0.15);
+        master.fromTo('#intro .intro-title', { y: 70, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, ease: 'power3.out' }, 0.35);
+        master.fromTo('#intro .intro-channel', { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, ease: 'power3.out' }, 0.7);
+        master.fromTo('#intro .intro-divider', { scaleX: 0, opacity: 1 }, { scaleX: 1, duration: 0.4, ease: 'power2.out' }, 0.88);
+        master.fromTo('#intro .intro-sub', { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35 }, 1.0);
+        master.to(introEl, { opacity: 0, y: -40, duration: 0.4, ease: 'power2.in' }, ${INTRO_SECONDS} - 0.4);
+      }
+      // ── News scenes ──
       scenes.forEach((scene, index) => {
-        const start = index * ${SCENE_SECONDS};
+        const start = ${INTRO_SECONDS} + index * ${SCENE_SECONDS};
         const photo = scene.querySelector(".bg-photo");
         const source = scene.querySelector(".source-row");
         const title = scene.querySelector(".hook-title");
@@ -379,8 +425,15 @@ function renderComposition(items) {
       seek = (time) => {
         const t = clamp(time, 0, ${TOTAL_SECONDS});
         progress.style.width = (t / ${TOTAL_SECONDS} * 100) + "%";
+        // intro fade
+        const introEl2 = document.getElementById('intro');
+        if (introEl2) {
+          const fadeIn = Math.min(1, t / 0.3);
+          const fadeOut = t > ${INTRO_SECONDS} - 0.4 ? Math.max(0, 1 - (t - (${INTRO_SECONDS} - 0.4)) / 0.4) : 1;
+          introEl2.style.opacity = String(t < 0.01 ? 0 : fadeIn * fadeOut);
+        }
         scenes.forEach((scene, index) => {
-          const local = t - index * ${SCENE_SECONDS};
+          const local = t - ${INTRO_SECONDS} - index * ${SCENE_SECONDS};
           const visible = local >= 0 && local <= ${SCENE_SECONDS};
           let opacity = visible ? 1 : 0;
           let y = 0;
@@ -450,7 +503,8 @@ function formatPubDate(pubDate) {
 }
 
 function commandExists(command) {
-  const result = spawnSync("powershell", ["-NoProfile", "-Command", `Get-Command ${command} -ErrorAction SilentlyContinue`], { encoding: "utf8" });
+  const checker = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(checker, [command], { encoding: "utf8" });
   return result.status === 0 && result.stdout.trim().length > 0;
 }
 

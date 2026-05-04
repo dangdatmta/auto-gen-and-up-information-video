@@ -2,3 +2,7 @@
 outputs/
 tools/
 node.exe
+node_modules/
+# Nhạc nền (file cá nhân, không commit lên repo)
+assets/*.mp3
+assets/*.wav
