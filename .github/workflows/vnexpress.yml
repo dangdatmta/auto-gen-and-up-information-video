@@ -55,7 +55,7 @@ jobs:
         run: |
           sudo swapoff -a
           sudo rm -f /mnt/swapfile
-          sudo fallocate -l 6G /mnt/swapfile
+          sudo fallocate -l 10G /mnt/swapfile
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile
           sudo swapon /mnt/swapfile
