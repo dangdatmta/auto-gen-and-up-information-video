@@ -38,6 +38,10 @@ jobs:
     name: "Generate & Upload (${{ github.event.inputs.slot || 'auto' }})"
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+      CHROME_FLAGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer --single-process"
 
     steps:
       # ── 1. Checkout code ───────────────────────────────────────────
@@ -51,21 +55,28 @@ jobs:
           node-version: "22"
           # Không dùng cache: project này chỉ có scripts, không có package-lock.json
 
-      # ── 3. Cài FFmpeg + Chromium (cần cho HyperFrames render) ─────
-      - name: Install FFmpeg & Chromium
+      # ── 3. Cài Google Chrome stable + FFmpeg ───────────────────────────
+      # Dùng Google Chrome thay vì Chromium: Ubuntu 24.04 cài chromium qua snap
+      # snap Chromium bị sandbox restriction, gây EPIPE khi HyperFrames stream frames
+      - name: Install Chrome & FFmpeg
         run: |
+          # Cài FFmpeg và font hỗ trợ tiếng Việt
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
-            chromium \
             fonts-noto-cjk \
             fonts-noto \
             ca-certificates
-          # ubuntu-latest dùng 'chromium', detect đúng binary name
-          CHROMIUM_BIN=$(command -v chromium || command -v chromium-browser || echo "")
-          echo "CHROMIUM_BIN=$CHROMIUM_BIN" >> "$GITHUB_ENV"
-          echo "FFmpeg: $(ffmpeg -version | head -1)"
-          echo "Chromium: $CHROMIUM_BIN"
+
+          # Cài Google Chrome stable (apt binary, không phải snap)
+          wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt-get install -y ./google-chrome-stable_current_amd64.deb
+          rm google-chrome-stable_current_amd64.deb
+
+          CHROME_PATH=$(command -v google-chrome-stable || command -v google-chrome)
+          echo "PUPPETEER_EXECUTABLE_PATH=$CHROME_PATH" >> "$GITHUB_ENV"
+          echo "✅ FFmpeg: $(ffmpeg -version | head -1)"
+          echo "✅ Chrome: $CHROME_PATH ($("$CHROME_PATH" --version))"
 
       # ── 4. Chuẩn bị file nhạc nền ────────────────────────────────
       # Ưu tiên: BACKGROUND_AUDIO_URL (secret) > file đã commit trong repo
@@ -126,9 +137,7 @@ jobs:
       - name: Run VnExpress pipeline
         env:
           UPLOAD_ENABLED: "true"
-          PUPPETEER_EXECUTABLE_PATH: ${{ env.CHROMIUM_BIN }}
-          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
-          CHROME_FLAGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage"
+          # PUPPETEER_EXECUTABLE_PATH được set ở bước cài Chrome (GITHUB_ENV)
           # ── Credentials từ GitHub Secrets ──
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
