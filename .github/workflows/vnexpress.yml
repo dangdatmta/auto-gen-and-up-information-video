@@ -1,0 +1,155 @@
+name: VnExpress Hot News Video
+
+# ──────────────────────────────────────────────────────────────────
+# Lịch chạy (UTC — GMT+7 = UTC+7):
+#   07:00 ICT = 00:00 UTC
+#   12:00 ICT = 05:00 UTC
+#   20:00 ICT = 13:00 UTC
+# ──────────────────────────────────────────────────────────────────
+on:
+  schedule:
+    - cron: "0 0 * * *"   # 07:00 ICT — slot sáng
+    - cron: "0 5 * * *"   # 12:00 ICT — slot trưa
+    - cron: "0 13 * * *"  # 20:00 ICT — slot tối
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "Slot muốn chạy thủ công (0700 / 1200 / 2000 / auto)"
+        required: false
+        default: "auto"
+      skip_render:
+        description: "Bỏ qua bước render video (chỉ generate metadata)"
+        type: boolean
+        required: false
+        default: false
+      dry_run_upload:
+        description: "Dry-run upload (không gọi API thật)"
+        type: boolean
+        required: false
+        default: false
+
+# Ngăn 2 job cùng slot chạy song song (tránh race condition)
+concurrency:
+  group: vnexpress-${{ github.event.schedule || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  generate-and-upload:
+    name: "Generate & Upload (${{ github.event.inputs.slot || 'auto' }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── 1. Checkout code ───────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Setup Node.js 22 ────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install npm dependencies
+        run: npm install --ignore-scripts 2>/dev/null || true
+
+      # ── 3. Cài FFmpeg + Chromium (cần cho HyperFrames render) ─────
+      - name: Install FFmpeg & Chromium
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg \
+            chromium-browser \
+            fonts-noto-cjk \
+            fonts-noto \
+            ca-certificates
+          echo "FFmpeg version: $(ffmpeg -version | head -1)"
+          echo "Chromium path: $(which chromium-browser)"
+
+      # ── 4. Khôi phục file nhạc nền từ secret ──────────────────────
+      - name: Restore background audio
+        env:
+          BACKGROUND_AUDIO_BASE64: ${{ secrets.BACKGROUND_AUDIO_BASE64 }}
+        run: |
+          mkdir -p assets
+          if [ -n "$BACKGROUND_AUDIO_BASE64" ]; then
+            echo "$BACKGROUND_AUDIO_BASE64" | base64 --decode > assets/background01.mp3
+            echo "✅ Background audio restored ($(du -sh assets/background01.mp3 | cut -f1))"
+          else
+            echo "⚠️  BACKGROUND_AUDIO_BASE64 secret không được set — render sẽ thất bại nếu không có audio."
+            exit 1
+          fi
+
+      # ── 5. Build args cho script ───────────────────────────────────
+      - name: Determine run arguments
+        id: args
+        run: |
+          # Xác định slot: workflow_dispatch → dùng input; schedule → auto detect
+          SLOT="${{ github.event.inputs.slot }}"
+          if [ -z "$SLOT" ] || [ "$SLOT" = "auto" ]; then
+            SLOT="auto"
+          fi
+
+          ARGS=""
+          if [ "$SLOT" != "auto" ]; then
+            ARGS="--slot $SLOT"
+          fi
+
+          if [ "${{ github.event.inputs.skip_render }}" = "true" ]; then
+            ARGS="$ARGS --skip-render"
+          fi
+
+          if [ "${{ github.event.inputs.dry_run_upload }}" = "true" ]; then
+            ARGS="$ARGS --dry-run-upload"
+          else
+            ARGS="$ARGS --upload"
+          fi
+
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+          echo "📋 Run args: node scripts/vnexpress-hot-news.mjs $ARGS"
+
+      # ── 6. Chạy script chính ───────────────────────────────────────
+      - name: Run VnExpress pipeline
+        env:
+          UPLOAD_ENABLED: "true"
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+          CHROME_FLAGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage"
+          # ── Credentials từ GitHub Secrets ──
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+        run: |
+          node scripts/vnexpress-hot-news.mjs ${{ steps.args.outputs.args }}
+
+      # ── 7. Upload artifacts (output video + report) ────────────────
+      - name: Upload output artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnexpress-output-${{ github.run_number }}
+          path: |
+            outputs/
+            !outputs/**/*.mp3
+          retention-days: 7
+
+      # ── 8. Hiển thị upload report ──────────────────────────────────
+      - name: Show upload report
+        if: always()
+        run: |
+          REPORT=$(find outputs -name "upload-report.json" | head -1)
+          if [ -n "$REPORT" ]; then
+            echo "=== Upload Report ==="
+            cat "$REPORT"
+          fi
+          ERROR=$(find outputs -name "error.log" | head -1)
+          if [ -n "$ERROR" ]; then
+            echo "=== Error Log ==="
+            cat "$ERROR"
+          fi
