@@ -53,7 +53,45 @@ function bangkokParts(date = new Date()) {
 function currentSlot() {
   if (slotArg) return slotArg;
   const now = bangkokParts();
-  return now.hour < 12 ? "0700" : "1900";
+  if (now.hour < 12) return "0700";
+  if (now.hour < 20) return "1200";
+  return "2000";
+}
+
+/**
+ * Trả về khoảng thời gian [from, to] (ms epoch) mà bài viết phải có pubDate nằm trong đó.
+ * Mỗi slot bao phủ đúng khoảng giờ của nó, với 2 phút overlap ở đầu để tránh bỏ sót.
+ *
+ *  0700: 20:02 hôm qua  →  07:00 hôm nay
+ *  1200: 07:02 hôm nay  →  12:00 hôm nay
+ *  2000: 12:02 hôm nay  →  20:00 hôm nay
+ *
+ * Nếu slot không khớp (ví dụ truyền tay) thì trả về null (không lọc).
+ */
+function slotTimeWindow(slot) {
+  const nowMs = Date.now();
+  // Lấy mốc đầu ngày Bangkok theo UTC offset +7
+  const bangkokOffset = 7 * 60 * 60 * 1000;
+  const todayMidnightBangkok = new Date(
+    Math.floor((nowMs + bangkokOffset) / (24 * 60 * 60 * 1000)) * (24 * 60 * 60 * 1000) - bangkokOffset
+  );
+
+  const h = (hours, minutes = 0) => todayMidnightBangkok.getTime() + (hours * 60 + minutes) * 60 * 1000;
+
+  if (slot === "0700") {
+    // 20:02 hôm qua → 07:00 hôm nay
+    return { from: h(-3, 58), to: h(7, 0) }; // -3h58m = 20:02 hôm qua
+  }
+  if (slot === "1200") {
+    // 07:02 hôm nay → 12:00 hôm nay
+    return { from: h(7, 2), to: h(12, 0) };
+  }
+  if (slot === "2000") {
+    // 12:02 hôm nay → 20:00 hôm nay
+    return { from: h(12, 2), to: h(20, 0) };
+  }
+  // Slot không xác định → không lọc
+  return null;
 }
 
 function decodeEntities(value = "") {
@@ -121,14 +159,23 @@ function extractArticleDetails(html = "") {
   return { title, lead, imageUrl: extractImageFromHtml(html) };
 }
 
-function parseItems(xml) {
+/**
+ * Parse RSS XML và lọc theo khoảng pubDate của slot.
+ * @param {string} xml
+ * @param {{ from: number, to: number } | null} window - epoch ms, hoặc null để không lọc
+ */
+function parseItems(xml, window = null) {
   const blocks = [...xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)].map((match) => match[0]);
   const seen = new Set();
-  const items = [];
+  const allItems = [];
+
   for (const block of blocks) {
     const link = tag(block, "link");
     if (!link || seen.has(link)) continue;
     seen.add(link);
+
+    const pubDateStr = tag(block, "pubDate");
+    const pubMs = pubDateStr ? new Date(pubDateStr).getTime() : NaN;
 
     const descriptionRaw = tag(block, "description");
     const image =
@@ -137,18 +184,41 @@ function parseItems(xml) {
       || extractImageFromHtml(descriptionRaw);
 
     const title = stripHtml(tag(block, "title"));
-    items.push({
-      index: items.length + 1,
+    allItems.push({
+      index: allItems.length + 1,
       title,
       link,
-      pubDate: tag(block, "pubDate"),
+      pubDate: pubDateStr,
+      pubMs,
       category: stripHtml(tag(block, "category")),
       summary: stripHtml(descriptionRaw),
       imageUrl: image
     });
-    if (items.length >= NEWS_COUNT) break;
   }
-  return items;
+
+  // Lọc theo khoảng thời gian nếu có
+  let filtered = allItems;
+  if (window) {
+    filtered = allItems.filter((item) => {
+      if (Number.isNaN(item.pubMs)) return false; // bỏ qua nếu không parse được pubDate
+      return item.pubMs >= window.from && item.pubMs <= window.to;
+    });
+
+    // Nếu không đủ NEWS_COUNT tin mới → fallback: lấy thêm từ đầu danh sách (tin mới nhất)
+    if (filtered.length < NEWS_COUNT) {
+      const filteredLinks = new Set(filtered.map((i) => i.link));
+      const extras = allItems.filter((i) => !filteredLinks.has(i.link));
+      const needed = NEWS_COUNT - filtered.length;
+      console.warn(
+        `[slot ${slotArg ?? "auto"}] Chỉ có ${filtered.length} tin trong khung giờ. ` +
+        `Bổ sung thêm ${Math.min(needed, extras.length)} tin gần nhất.`
+      );
+      filtered = [...filtered, ...extras.slice(0, needed)];
+    }
+  }
+
+  // Giới hạn & đánh lại index
+  return filtered.slice(0, NEWS_COUNT).map((item, i) => ({ ...item, index: i + 1 }));
 }
 
 function limitWords(value, maxWords) {
@@ -290,7 +360,7 @@ function renderComposition(items) {
         <h1 class="intro-title">10 tin tức nóng nhất<br>trong các giờ qua</h1>
         <div class="intro-channel">${escapeHtml(WATERMARK)}</div>
         <div class="intro-divider"></div>
-        <p class="intro-sub">Cập nhật mỗi sáng &amp; tối</p>
+        <p class="intro-sub">Cập nhật lúc 7:00 • 12:00 • 20:00</p>
       </div>
     </section>`;
 
@@ -544,12 +614,19 @@ function verifyOutput(output) {
 async function main() {
   const now = bangkokParts();
   const slot = currentSlot();
+  const window = slotTimeWindow(slot);
   const outDir = path.resolve("outputs", "vnexpress", now.date, slot);
   const imageDir = path.join(outDir, "assets");
   await mkdir(outDir, { recursive: true });
 
+  if (window) {
+    const fromStr = new Date(window.from).toLocaleString("vi-VN", { timeZone: "Asia/Bangkok" });
+    const toStr   = new Date(window.to).toLocaleString("vi-VN", { timeZone: "Asia/Bangkok" });
+    console.log(`[slot ${slot}] Lọc tin từ ${fromStr} → ${toStr}`);
+  }
+
   const xml = await fetchText(RSS_URL);
-  let items = parseItems(xml);
+  let items = parseItems(xml, window);
   if (items.length === 0) throw new Error("RSS returned no items; aborting render.");
   items = await enrichArticles(items);
   items = items.slice(0, NEWS_COUNT).map((item, index) => ({

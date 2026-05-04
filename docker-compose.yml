@@ -10,6 +10,15 @@ services:
       - ./outputs:/app/outputs    # output video được ghi vào đây
     command: ["--slot", "0700", "--upload"]
 
+  # ── Trưa: generate + render + upload ─────────────────────────────────────
+  vnexpress-noon:
+    build: .
+    env_file: .env
+    volumes:
+      - ./assets:/app/assets
+      - ./outputs:/app/outputs
+    command: ["--slot", "1200", "--upload"]
+
   # ── Tối: generate + render + upload ───────────────────────────────────────
   vnexpress-evening:
     build: .
@@ -17,7 +26,7 @@ services:
     volumes:
       - ./assets:/app/assets
       - ./outputs:/app/outputs
-    command: ["--slot", "1900", "--upload"]
+    command: ["--slot", "2000", "--upload"]
 
   # ── Chỉ generate (không render, không upload) — test nhanh ────────────────
   vnexpress-generate:

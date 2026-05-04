@@ -34,12 +34,12 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      echo "Usage: ./run.sh [--slot 0700|1900] [--skip-render] [--upload] [--dry-run-upload]"
+      echo "Usage: ./run.sh [--slot 0700|1200|2000] [--skip-render] [--upload] [--dry-run-upload]"
       exit 0
       ;;
     *)
       echo "Unknown argument: $1"
-      echo "Usage: ./run.sh [--slot 0700|1900] [--skip-render] [--upload] [--dry-run-upload]"
+      echo "Usage: ./run.sh [--slot 0700|1200|2000] [--skip-render] [--upload] [--dry-run-upload]"
       exit 1
       ;;
   esac

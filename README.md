@@ -10,7 +10,8 @@ Tự động tạo video dọc MP4 từ RSS VnExpress "Tin nổi bật" và uplo
 - Nhạc nền từ `assets/background01.mp3` (hoặc cấu hình qua `BACKGROUND_AUDIO_PATH`)
 - Ảnh bài báo làm background động toàn màn hình khi có
 - Watermark: `@tintucchatluong`
-- Output tại `outputs/vnexpress/YYYY-MM-DD/0700/` hoặc `outputs/vnexpress/YYYY-MM-DD/1900/`
+- Output tại `outputs/vnexpress/YYYY-MM-DD/0700/`, `outputs/vnexpress/YYYY-MM-DD/1200/`, hoặc `outputs/vnexpress/YYYY-MM-DD/2000/`
+- Lọc tin theo `pubDate` từng khung giờ để tránh trùng lặp: 0700 (20:02→07:00), 1200 (07:02→12:00), 2000 (12:02→20:00)
 
 Mỗi lần chạy tạo ra:
 
@@ -97,10 +98,16 @@ Generate và render video buổi sáng:
 ./run.sh --slot 0700
 ```
 
+Generate và render video buổi trưa:
+
+```bash
+./run.sh --slot 1200
+```
+
 Generate và render video buổi tối:
 
 ```bash
-./run.sh --slot 1900
+./run.sh --slot 2000
 ```
 
 Generate, render và upload buổi sáng:
@@ -119,16 +126,19 @@ Validate upload config (không gọi API thật):
 
 ```powershell
 .\Run-VnExpressHotNews.ps1 -Slot 0700
-.\Run-VnExpressHotNews.ps1 -Slot 1900 -Upload
+.\Run-VnExpressHotNews.ps1 -Slot 1200 -Upload
+.\Run-VnExpressHotNews.ps1 -Slot 2000 -Upload
 .\Run-VnExpressHotNews.ps1 -Slot 0700 -SkipRender -DryRunUpload
 ```
 
 ### npm scripts (đa nền tảng)
 
 ```bash
-npm run vnexpress:morning
-npm run vnexpress:evening
+npm run vnexpress:morning         # slot 07:00
+npm run vnexpress:noon            # slot 12:00
+npm run vnexpress:evening         # slot 20:00
 npm run vnexpress:morning:upload
+npm run vnexpress:noon:upload
 npm run vnexpress:evening:upload
 npm run vnexpress:upload:dry-run
 ```
@@ -154,6 +164,9 @@ Chạy:
 ```bash
 # Buổi sáng (generate + render + upload)
 docker compose run --rm vnexpress-morning
+
+# Buổi trưa
+docker compose run --rm vnexpress-noon
 
 # Buổi tối
 docker compose run --rm vnexpress-evening
