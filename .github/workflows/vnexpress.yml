@@ -151,7 +151,7 @@ jobs:
         env:
           UPLOAD_ENABLED: "true"
           # PUPPETEER_EXECUTABLE_PATH được set ở bước cài Chrome (GITHUB_ENV)
-          HYPERFRAMES_QUALITY: "medium"
+          HYPERFRAMES_QUALITY: "standard"
           # Truyền trực tiếp flags cho Puppeteer qua biến môi trường này
           CHROME_FLAGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer --single-process --font-render-hinting=none"
           # ── Credentials từ GitHub Secrets ──
