@@ -60,24 +60,40 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
-            chromium-browser \
+            chromium \
             fonts-noto-cjk \
             fonts-noto \
             ca-certificates
-          echo "FFmpeg version: $(ffmpeg -version | head -1)"
-          echo "Chromium path: $(which chromium-browser)"
+          # ubuntu-latest dùng 'chromium', detect đúng binary name
+          CHROMIUM_BIN=$(command -v chromium || command -v chromium-browser || echo "")
+          echo "CHROMIUM_BIN=$CHROMIUM_BIN" >> "$GITHUB_ENV"
+          echo "FFmpeg: $(ffmpeg -version | head -1)"
+          echo "Chromium: $CHROMIUM_BIN"
 
-      # ── 4. Khôi phục file nhạc nền từ secret ──────────────────────
-      - name: Restore background audio
+      # ── 4. Chuẩn bị file nhạc nền ────────────────────────────────
+      # Ưu tiên: BACKGROUND_AUDIO_URL (secret) > file đã commit trong repo
+      # Cách lưu URL: Settings → Secrets → BACKGROUND_AUDIO_URL
+      # Hỗ trợ: Google Drive direct link, Dropbox, S3, hoặc bất kỳ URL public nào
+      - name: Prepare background audio
         env:
-          BACKGROUND_AUDIO_BASE64: ${{ secrets.BACKGROUND_AUDIO_BASE64 }}
+          BACKGROUND_AUDIO_URL: ${{ secrets.BACKGROUND_AUDIO_URL }}
         run: |
           mkdir -p assets
-          if [ -n "$BACKGROUND_AUDIO_BASE64" ]; then
-            echo "$BACKGROUND_AUDIO_BASE64" | base64 --decode > assets/background01.mp3
-            echo "✅ Background audio restored ($(du -sh assets/background01.mp3 | cut -f1))"
+          AUDIO_DEST="assets/background01.mp3"
+
+          if [ -n "$BACKGROUND_AUDIO_URL" ]; then
+            echo "⬇️  Downloading audio from URL..."
+            curl -fsSL --retry 3 --retry-delay 5 \
+              -A "Mozilla/5.0" \
+              -o "$AUDIO_DEST" \
+              "$BACKGROUND_AUDIO_URL"
+            echo "✅ Audio downloaded: $(du -sh $AUDIO_DEST | cut -f1)"
+          elif [ -f "$AUDIO_DEST" ]; then
+            echo "✅ Using committed audio file: $(du -sh $AUDIO_DEST | cut -f1)"
           else
-            echo "⚠️  BACKGROUND_AUDIO_BASE64 secret không được set — render sẽ thất bại nếu không có audio."
+            echo "❌ Không tìm thấy file nhạc nền."
+            echo "   Cách fix: set secret BACKGROUND_AUDIO_URL với link download trực tiếp (Google Drive, Dropbox...)"
+            echo "   Hoặc commit file assets/background01.mp3 vào repo (xoá dòng 'assets/*.mp3' trong .gitignore)"
             exit 1
           fi
 
@@ -113,7 +129,7 @@ jobs:
       - name: Run VnExpress pipeline
         env:
           UPLOAD_ENABLED: "true"
-          PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser
+          PUPPETEER_EXECUTABLE_PATH: ${{ env.CHROMIUM_BIN }}
           PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
           CHROME_FLAGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage"
           # ── Credentials từ GitHub Secrets ──
