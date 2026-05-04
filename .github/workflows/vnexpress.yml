@@ -44,15 +44,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Setup Node.js 22 ────────────────────────────────────────
+      # ── 2. Setup Node.js 22 ────────────────────────────────────
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
-
-      - name: Install npm dependencies
-        run: npm install --ignore-scripts 2>/dev/null || true
+          # Không dùng cache: project này chỉ có scripts, không có package-lock.json
 
       # ── 3. Cài FFmpeg + Chromium (cần cho HyperFrames render) ─────
       - name: Install FFmpeg & Chromium
