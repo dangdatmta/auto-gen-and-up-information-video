@@ -111,7 +111,9 @@ async function uploadFacebookReel({ env, caption, videoPath, dryRun }) {
       Authorization: `OAuth ${accessToken}`,
       offset: "0",
       file_size: String(videoSize),
-      "Content-Type": "application/octet-stream"
+      "Content-Type": "application/octet-stream",
+      "Content-Length": String(videoSize),
+      "X-Entity-Length": String(videoSize)
     },
     body: createReadStream(videoPath),
     duplex: "half"
