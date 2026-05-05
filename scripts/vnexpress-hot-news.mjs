@@ -385,13 +385,13 @@ function renderComposition(items) {
     .accent-a { width: 300px; height: 300px; right: -90px; top: 210px; border: 3px solid rgba(255,255,255,.2); }
     .accent-b { width: 14px; height: 780px; left: 54px; top: 210px; background: linear-gradient(#ff4e28, #ffd166, #00aeff); transform: rotate(8deg); }
     .scene-count { position: absolute; top: 78px; left: 74px; color: rgba(255,255,255,.9); font-weight: 900; font-size: 32px; letter-spacing: 0; text-shadow: 0 6px 24px rgba(0,0,0,.62); }
-    .content { position: absolute; left: 60px; right: 60px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: stretch; gap: 32px; max-height: 1280px; }
+    .content { position: absolute; left: 60px; right: 60px; top: 220px; bottom: 640px; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 32px; }
     .source-row { display: flex; justify-content: space-between; gap: 20px; width: 100%; color: rgba(255,255,255,.9); font-size: 28px; line-height: 1; font-weight: 900; text-shadow: 0 5px 22px rgba(0,0,0,.7); }
     .source-row span:first-child { padding: 13px 18px; background: #ff4e28; border-radius: 8px; color: #fff; }
     .source-row span:last-child { padding-top: 13px; }
-    .hook-title { margin: 0; color: #fff7df; line-height: 1.08; font-weight: 950; letter-spacing: 0; text-wrap: balance; text-align: left; text-shadow: 0 9px 34px rgba(0,0,0,.78), 0 0 28px rgba(255,78,40,.28); max-height: 620px; overflow: hidden; }
+    .hook-title { margin: 0; color: #fff7df; line-height: 1.08; font-weight: 950; letter-spacing: 0; text-wrap: balance; text-align: left; text-shadow: 0 9px 34px rgba(0,0,0,.78), 0 0 28px rgba(255,78,40,.28); max-height: 540px; overflow: hidden; }
     .hook-title span { display: inline-block; transform-origin: 50% 80%; }
-    .lead { margin: 0; color: #9ee7ff; line-height: 1.28; font-weight: 820; max-width: 925px; max-height: 470px; overflow: hidden; text-align: justify; text-shadow: 0 6px 26px rgba(0,0,0,.78), 0 0 22px rgba(0,174,255,.24); }
+    .lead { margin: 0; color: #9ee7ff; line-height: 1.28; font-weight: 820; max-width: 925px; max-height: 360px; overflow: hidden; text-align: justify; text-shadow: 0 6px 26px rgba(0,0,0,.78), 0 0 22px rgba(0,174,255,.24); }
     .outro { position: absolute; inset: 0; opacity: 0; overflow: hidden; background: radial-gradient(circle at 20% 20%, rgba(255,78,40,.5), transparent 32%), radial-gradient(circle at 80% 72%, rgba(0,174,255,.45), transparent 36%), linear-gradient(145deg, #070a0f, #17191f 46%, #070a0f); }
     .outro::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.25), rgba(0,0,0,.68)); }
     .outro-inner { position: absolute; left: 74px; right: 74px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 34px; }
