@@ -151,7 +151,7 @@ async function uploadYoutubeShort({ env, caption, videoPath, dryRun }) {
       tags: ["tin tức", "vnexpress", "tintucchatluong", "shorts"]
     },
     status: {
-      privacyStatus: "private",
+      privacyStatus: "public",
       selfDeclaredMadeForKids: false
     }
   };
@@ -175,7 +175,7 @@ async function uploadYoutubeShort({ env, caption, videoPath, dryRun }) {
   const json = await requireJsonOk(response, "YouTube upload failed");
   return {
     status: "uploaded",
-    privacyStatus: "private",
+    privacyStatus: "public",
     videoId: json.id,
     url: json.id ? `https://www.youtube.com/watch?v=${json.id}` : undefined,
     response: json
