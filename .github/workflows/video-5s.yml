@@ -97,7 +97,7 @@ jobs:
       # ── 4. Chuẩn bị file nhạc nền ─────────────────────────────────
       - name: Prepare background audio
         env:
-          BACKGROUND_AUDIO_URL: ${{ secrets.BACKGROUND_AUDIO_URL }}
+          BACKGROUND_AUDIO_URL: ${{ secrets.VIDEO5S_BACKGROUND_AUDIO_URL }}
         run: |
           mkdir -p assets
           AUDIO_DEST="assets/background01.mp3"
