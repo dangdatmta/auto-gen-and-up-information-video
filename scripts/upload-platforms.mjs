@@ -3,22 +3,27 @@ import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const GRAPH_VERSION = "v23.0";
-const CAPTION =
-  "10 tin nổi bật hôm nay. Theo dõi @tintucchatluong để cập nhật tin tức nhanh mỗi sáng và tối. #tintuc #vnexpress #tintucchatluong";
+const FALLBACK_CAPTION =
+  "Tin nổi bật hôm nay. Nguồn: VnExpress. #Shorts #VnExpress #TinTuc";
 
 export async function writeCaption(outDir) {
+  const metadata = await loadVideoMetadata(outDir);
+  const caption = buildCaption(metadata);
   const captionPath = path.join(outDir, "caption.txt");
-  await writeFile(captionPath, CAPTION, "utf8");
-  return CAPTION;
+  await writeFile(captionPath, caption, "utf8");
+  return caption;
 }
 
 export async function uploadToPlatforms({ outDir, videoPath, dryRun = false }) {
   const env = await loadEnv();
+  const metadata = await loadVideoMetadata(outDir);
   const caption = await writeCaption(outDir);
+  const youtubeMetadata = buildYoutubeMetadata(metadata, caption);
   const report = {
     generatedAt: new Date().toISOString(),
     dryRun,
     caption,
+    youtubeMetadata,
     videoPath,
     platforms: {}
   };
@@ -40,7 +45,7 @@ export async function uploadToPlatforms({ outDir, videoPath, dryRun = false }) {
 
   for (const [platform, upload] of jobs) {
     try {
-      report.platforms[platform] = await upload({ env, caption, videoPath, dryRun });
+      report.platforms[platform] = await upload({ env, caption, metadata, youtubeMetadata, videoPath, dryRun });
     } catch (error) {
       report.platforms[platform] = { status: "failed", error: error.message };
       errors[platform] = {
@@ -55,6 +60,59 @@ export async function uploadToPlatforms({ outDir, videoPath, dryRun = false }) {
     await writeJson(path.join(outDir, "upload-errors.json"), errors);
   }
   return report;
+}
+
+async function loadVideoMetadata(outDir) {
+  const newsPath = path.join(outDir, "news.json");
+  try {
+    return JSON.parse(await readFile(newsPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function buildCaption(metadata) {
+  const experiment = metadata?.experiment;
+  if (experiment?.captionVariant) return experiment.captionVariant;
+  return FALLBACK_CAPTION;
+}
+
+function cleanHashtag(tag) {
+  const cleaned = String(tag || "").replace(/[^\p{L}\p{N}_#]/gu, "");
+  return cleaned.startsWith("#") ? cleaned : `#${cleaned}`;
+}
+
+function buildYoutubeMetadata(metadata, caption) {
+  const experiment = metadata?.experiment;
+  const items = metadata?.items || [];
+  const topStory = items[0];
+  const hashtags = (experiment?.hashtags?.length ? experiment.hashtags : ["#Shorts", "#VnExpress", "#TinTuc"])
+    .map(cleanHashtag)
+    .filter((tag) => tag.length > 1)
+    .slice(0, 5);
+  const title = String(experiment?.titleVariant || `${topStory?.viralHook || topStory?.title || "Tin nổi bật"} #Shorts`).slice(0, 96);
+  const sourceLines = items
+    .slice(0, 5)
+    .map((item, index) => `${index + 1}. ${item.title}${item.link ? `\n${item.link}` : ""}`)
+    .join("\n");
+  const descriptionParts = [
+    caption,
+    "",
+    "Nguồn bài viết: VnExpress",
+    sourceLines
+  ];
+  if (!hashtags.some((tag) => caption.includes(tag))) {
+    descriptionParts.push("", hashtags.join(" "));
+  }
+  const description = descriptionParts.filter((part, index) => part || descriptionParts[index - 1]).join("\n");
+  const tags = [
+    "tin tức",
+    "VnExpress",
+    "YouTube Shorts",
+    "tin nóng",
+    topStory?.category
+  ].filter(Boolean).slice(0, 8);
+  return { title, description, hashtags, tags };
 }
 
 async function loadEnv() {
@@ -88,10 +146,10 @@ function skipped(reason, missingKeys = []) {
   return { status: "skipped", reason, missing: missingKeys };
 }
 
-async function uploadFacebookReel({ env, caption, videoPath, dryRun }) {
+async function uploadFacebookReel({ env, caption, metadata, videoPath, dryRun }) {
+  if (dryRun) return { status: "skipped", reason: "dry_run", caption };
   const missingKeys = missing(env, ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN"]);
   if (missingKeys.length) return skipped("missing_facebook_credentials", missingKeys);
-  if (dryRun) return { status: "skipped", reason: "dry_run" };
 
   const pageId = env.FACEBOOK_PAGE_ID;
   const accessToken = env.FACEBOOK_PAGE_ACCESS_TOKEN;
@@ -126,7 +184,7 @@ async function uploadFacebookReel({ env, caption, videoPath, dryRun }) {
     video_id: videoId,
     video_state: "PUBLISHED",
     description: caption,
-    title: "10 tin nổi bật hôm nay"
+    title: metadata?.experiment?.titleVariant || "Tin nổi bật hôm nay"
   });
 
   return {
@@ -136,19 +194,19 @@ async function uploadFacebookReel({ env, caption, videoPath, dryRun }) {
   };
 }
 
-async function uploadYoutubeShort({ env, caption, videoPath, dryRun }) {
+async function uploadYoutubeShort({ env, youtubeMetadata, videoPath, dryRun }) {
+  if (dryRun) return { status: "skipped", reason: "dry_run", metadata: youtubeMetadata };
   const missingKeys = missing(env, ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]);
   if (missingKeys.length) return skipped("missing_youtube_credentials", missingKeys);
-  if (dryRun) return { status: "skipped", reason: "dry_run" };
 
   const accessToken = await refreshYoutubeAccessToken(env);
   const boundary = `codex_vnexpress_${Date.now()}`;
   const metadata = {
     snippet: {
-      title: "10 tin nổi bật hôm nay #Shorts",
-      description: caption,
+      title: youtubeMetadata.title,
+      description: youtubeMetadata.description,
       categoryId: "25",
-      tags: ["tin tức", "vnexpress", "tintucchatluong", "shorts"]
+      tags: youtubeMetadata.tags
     },
     status: {
       privacyStatus: "public",
@@ -183,9 +241,9 @@ async function uploadYoutubeShort({ env, caption, videoPath, dryRun }) {
 }
 
 async function uploadTikTok({ env, caption, videoPath, dryRun }) {
+  if (dryRun) return { status: "skipped", reason: "dry_run", caption };
   const missingKeys = missing(env, ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REFRESH_TOKEN"]);
   if (missingKeys.length) return skipped("missing_tiktok_credentials", missingKeys);
-  if (dryRun) return { status: "skipped", reason: "dry_run" };
 
   const accessToken = await refreshTikTokAccessToken(env);
   const creator = await tiktokPost("https://open.tiktokapis.com/v2/post/publish/creator_info/query/", accessToken, {});

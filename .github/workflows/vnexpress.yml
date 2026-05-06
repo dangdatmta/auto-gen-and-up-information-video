@@ -2,19 +2,15 @@ name: VnExpress Hot News Video
 
 # ──────────────────────────────────────────────────────────────────
 # Lịch chạy (UTC — GMT+7 = UTC+7):
-#   07:00 ICT = 00:00 UTC
-#   12:00 ICT = 05:00 UTC
-#   20:00 ICT = 13:00 UTC
+#   Chạy mỗi 2 giờ/lần ở phút 00.
 # ──────────────────────────────────────────────────────────────────
 on:
   schedule:
-    - cron: "0 0 * * *"   # 07:00 ICT — slot sáng
-    - cron: "0 5 * * *"   # 12:00 ICT — slot trưa
-    - cron: "0 13 * * *"  # 20:00 ICT — slot tối
+    - cron: "0 */2 * * *"
   workflow_dispatch:
     inputs:
       slot:
-        description: "Slot muốn chạy thủ công (0700 / 1200 / 2000 / auto)"
+        description: "Slot muốn chạy thủ công (HHMM, ví dụ 0700 / 0900 / auto)"
         required: false
         default: "auto"
       skip_render:
@@ -28,9 +24,9 @@ on:
         required: false
         default: false
 
-# Ngăn 2 job cùng slot chạy song song (tránh race condition)
+# Ngăn 2 job VnExpress chạy song song (tránh race condition khi lưu state chống trùng tin)
 concurrency:
-  group: vnexpress-${{ github.event.schedule || github.run_id }}
+  group: vnexpress-pipeline
   cancel-in-progress: false
 
 jobs:
@@ -47,6 +43,18 @@ jobs:
       # ── 1. Checkout code ───────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
+
+      # ── State chống trùng tin trong ngày ─────────────────────────
+      - name: Prepare dedupe state directory
+        run: mkdir -p .vnexpress-state
+
+      - name: Restore dedupe state
+        uses: actions/cache/restore@v4
+        with:
+          path: .vnexpress-state
+          key: vnexpress-dedupe-${{ github.run_id }}
+          restore-keys: |
+            vnexpress-dedupe-
 
       # ── Maximize Build Space (Swap) ───────────────────────────────
       # Render video tốn rất nhiều RAM, GitHub runner chỉ có 7GB.
@@ -173,6 +181,7 @@ jobs:
       - name: Run VnExpress pipeline
         env:
           UPLOAD_ENABLED: "true"
+          VNEXPRESS_DEDUPE_STATE: ".vnexpress-state/seen-news.json"
           # PUPPETEER_EXECUTABLE_PATH được set ở bước cài Chrome (GITHUB_ENV)
           HYPERFRAMES_QUALITY: "draft"
           # Truyền trực tiếp flags cho Puppeteer qua biến môi trường này
@@ -188,6 +197,13 @@ jobs:
           TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
         run: |
           node scripts/vnexpress-hot-news.mjs ${{ steps.args.outputs.args }}
+
+      - name: Save dedupe state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .vnexpress-state
+          key: vnexpress-dedupe-${{ github.run_id }}
 
       # ── 7. Upload artifacts (output video + report) ────────────────
       - name: Upload output artifacts

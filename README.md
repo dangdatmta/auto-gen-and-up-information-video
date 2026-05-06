@@ -4,8 +4,8 @@ Tự động tạo video dọc MP4 từ RSS VnExpress "Tin nổi bật" và uplo
 
 ## What It Produces
 
-- `1080x1920`, `30fps`, khoảng `83s`
-- 10 cảnh tin tức, mỗi cảnh 8 giây
+- `1080x1920`, `30fps`, khoảng `25-45s` cho YouTube Shorts
+- 3-5 cảnh tin tức, xếp theo `viralScore`; tin mạnh nhất mở ngay frame đầu
 - Màn hình subscribe/follow cuối video
 - Nhạc nền từ `assets/background01.mp3` (hoặc cấu hình qua `BACKGROUND_AUDIO_PATH`)
 - Ảnh bài báo làm background động toàn màn hình khi có
@@ -17,7 +17,8 @@ Mỗi lần chạy tạo ra:
 
 - `index.html` — HyperFrames HTML composition
 - `news.json` — metadata, hook, lead, đường dẫn ảnh đã tải
-- `caption.txt` — caption cố định cho mạng xã hội
+- `caption.txt` — caption sinh theo tin dẫn đầu, nguồn và hashtag
+- `video-experiment.json` — hook/title/caption variant, tin dẫn đầu, duration, hashtag, slot
 - `upload-report.json` — kết quả upload từng nền tảng
 - `upload-errors.json` — lỗi upload (nếu có)
 - `final.mp4` — video đã render (khi HyperFrames/FFmpeg sẵn sàng)
@@ -187,10 +188,10 @@ docker compose run --rm vnexpress-morning --slot 0700 --skip-render
 ## Upload Status
 
 - **Facebook Page Reels**: publish public ngay lập tức.
-- **YouTube**: upload với `privacyStatus=private`.
+- **YouTube**: upload Shorts public với metadata sinh theo tin dẫn đầu.
 - **TikTok**: dùng `SELF_ONLY`; thất bại nếu tài khoản creator không hỗ trợ privacy option đó.
 - Nếu một nền tảng lỗi, các nền tảng còn lại vẫn tiếp tục; lỗi được ghi vào `upload-errors.json`.
 
 ## Notes
 
-Script mở từng bài báo VnExpress, lấy `h1` làm hook và đoạn lead làm summary. Nếu feed item không có ảnh, thử `og:image` của bài báo; nếu vẫn không có, dùng background animated fallback. Ảnh bài báo được dùng trực tiếp với motion và overlay, không blur.
+Script mở từng bài báo VnExpress, lấy `h1` làm hook và đoạn lead làm summary, rồi chấm `viralScore` theo độ mới, con số lớn, tiền/phạt/chính sách, thể thao nóng và tác động đời sống. Nếu feed item không có ảnh, thử `og:image` của bài báo; nếu vẫn không có, dùng background animated fallback. Ảnh bài báo được dùng trực tiếp với motion và overlay, không blur.
