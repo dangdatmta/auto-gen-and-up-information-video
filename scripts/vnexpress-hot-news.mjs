@@ -17,10 +17,13 @@ const FPS = 30;
 const MIN_NEWS_COUNT = 3;
 const MAX_NEWS_COUNT = 5;
 const CANDIDATE_COUNT = 12;
-const TOP_STORY_SECONDS = 10;
-const STORY_SECONDS = 7;
-const SHORT_STORY_SECONDS = 5;
+const TOP_STORY_SECONDS = 7;
+const STORY_SECONDS = 5;
+const SHORT_STORY_SECONDS = 4;
 const OUTRO_SECONDS = 2;
+const SCENE_WIPE_LEAD_SECONDS = 0.62;
+const SCENE_WIPE_SECONDS = 0.4;
+const SCENE_FADE_SECONDS = 0.26;
 const DEDUPE_STATE = process.env.VNEXPRESS_DEDUPE_STATE || path.resolve(".vnexpress-state", "seen-news.json");
 const DEDUPE_UPDATED_MARKER = process.env.VNEXPRESS_DEDUPE_UPDATED_MARKER
   || path.join(path.dirname(DEDUPE_STATE), "updated.json");
@@ -656,6 +659,9 @@ function renderComposition(items, totalSeconds) {
       </section>`;
   }).join("\n");
   const outroStart = Math.max(0, totalSeconds - OUTRO_SECONDS);
+  const wipeLeadSeconds = SCENE_WIPE_LEAD_SECONDS;
+  const wipeSeconds = SCENE_WIPE_SECONDS;
+  const fadeSeconds = SCENE_FADE_SECONDS;
 
   return `<!doctype html>
 <html lang="vi">
@@ -739,6 +745,9 @@ function renderComposition(items, totalSeconds) {
     window.__hfDuration = ${totalSeconds};
     window.__hfFps = ${FPS};
     const sceneTimings = ${JSON.stringify(items.map((item) => ({ start: item.startSeconds, duration: item.durationSeconds })))};
+    const wipeLeadSeconds = ${wipeLeadSeconds};
+    const wipeSeconds = ${wipeSeconds};
+    const fadeSeconds = ${fadeSeconds};
     const scenes = [...document.querySelectorAll(".scene")];
     const outro = document.querySelector(".outro");
     const progress = document.querySelector(".progress-inner");
@@ -761,7 +770,7 @@ function renderComposition(items, totalSeconds) {
         const ticker = scene.querySelector(".ticker-track");
         master.set(scene, { opacity: 1, y: 0, scale: 1 }, start);
         master.fromTo(flash, { opacity: index === 0 ? .72 : .5 }, { opacity: 0, duration: .15, ease: "power1.out" }, start);
-        master.fromTo(wipe, { xPercent: -105 }, { xPercent: 105, duration: .34, ease: "power4.inOut" }, start + Math.max(0, duration - .44));
+        master.fromTo(wipe, { xPercent: -105 }, { xPercent: 105, duration: wipeSeconds, ease: "power4.inOut" }, start + Math.max(0, duration - wipeLeadSeconds));
         master.fromTo(topBar, { y: -38, opacity: .65 }, { y: 0, opacity: 1, duration: .28 }, start + .02);
         master.fromTo(badge, { x: -46, opacity: 0 }, { x: 0, opacity: 1, duration: .28 }, start + .1);
         master.fromTo(title, { y: 76, scale: .86, opacity: .78 }, { y: 0, scale: 1, opacity: 1, duration: .5, ease: "back.out(1.45)" }, start + .06);
@@ -793,7 +802,7 @@ function renderComposition(items, totalSeconds) {
         master.to(scene.querySelectorAll(".segment i"), { width: (segmentIndex) => segmentIndex < index ? "100%" : segmentIndex === index ? "100%" : "0%", duration: segmentIndex => segmentIndex === index ? duration : .01, ease: "none" }, start);
         if (ticker) master.fromTo(ticker, { xPercent: 0 }, { xPercent: -54, duration, ease: "none" }, start);
         if (photo) master.to(photo, { scale: index === 0 ? 1.045 : 1.03, x: index % 2 ? 14 : -12, y: index % 3 ? -9 : 7, duration, ease: "none" }, start);
-        master.to(scene, { opacity: 0, scale: 1.03, duration: .18, ease: "power2.in" }, start + duration - .18);
+        master.to(scene, { opacity: 0, scale: 1.03, duration: fadeSeconds, ease: "power2.in" }, start + duration - fadeSeconds);
       });
       const outroInner = outro.querySelector(".outro-inner");
       master.to(outro, { opacity: 1, duration: .28, ease: "power3.out" }, ${outroStart});
@@ -820,15 +829,15 @@ function renderComposition(items, totalSeconds) {
           const visible = local >= 0 && local <= duration;
           let opacity = visible ? 1 : 0;
           let scale = 1;
-          if (visible && local > duration - 0.34) {
-            const p = easeIn((local - (duration - 0.34)) / .34);
+          if (visible && local > duration - fadeSeconds) {
+            const p = easeIn((local - (duration - fadeSeconds)) / fadeSeconds);
             opacity = 1 - p; scale = 1 + .03 * p;
           }
           set(scene, opacity, 0, scale);
           const flash = scene.querySelector(".red-flash");
           const wipe = scene.querySelector(".red-wipe");
           if (flash) flash.style.opacity = String(visible ? .72 * (1 - clamp(local / .15)) : 0);
-          if (wipe) wipe.style.transform = "translateX(" + (-105 + 210 * easeOut((local - (duration - .44)) / .34)) + "%)";
+          if (wipe) wipe.style.transform = "translateX(" + (-105 + 210 * easeOut((local - (duration - wipeLeadSeconds)) / wipeSeconds)) + "%)";
           set(scene.querySelector(".top-bar"), Math.max(.65, easeOut((local - .02) / .28)), -38 * (1 - easeOut((local - .02) / .28)), 1);
           set(scene.querySelector(".category-badge"), easeOut((local - .1) / .28), 0, 1);
           const titleP = Math.max(.78, easeOut((local - .06) / .5));
