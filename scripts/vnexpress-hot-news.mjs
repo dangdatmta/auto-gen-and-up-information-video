@@ -625,7 +625,7 @@ function renderComposition(items, totalSeconds) {
     const duration = item.durationSeconds;
     const hasImage = Boolean(item.localImage);
     const layout = i === 0 ? "layout-hero is-lead" : i % 3 === 1 ? "layout-split" : i % 3 === 2 ? "layout-panel" : "layout-stack";
-    const hook = displayText(item.frameHook || item.viralHook || item.hook || item.title);
+    const hook = displayText(item.hook || item.title || item.viralHook || item.frameHook);
     const titleSize = titleFontSize(hook, layout);
     const summaryText = displayText(item.summary || item.title);
     const leadSize = summaryFontSize(summaryText);
