@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -20,6 +20,9 @@ const INTRO_SECONDS = 3;
 const OUTRO_SECONDS = 3;
 const NEWS_SECONDS = NEWS_COUNT * SCENE_SECONDS;
 const TOTAL_SECONDS = INTRO_SECONDS + NEWS_SECONDS + OUTRO_SECONDS;
+const DEDUPE_STATE = process.env.VNEXPRESS_DEDUPE_STATE || path.resolve(".vnexpress-state", "seen-news.json");
+const DEDUPE_UPDATED_MARKER = process.env.VNEXPRESS_DEDUPE_UPDATED_MARKER
+  || path.join(path.dirname(DEDUPE_STATE), "updated.json");
 
 const args = new Set(process.argv.slice(2));
 const slotArg = valueAfter("--slot");
@@ -114,6 +117,102 @@ function stripHtml(value = "") {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeDedupeKey(value = "") {
+  return stripHtml(value)
+    .toLowerCase()
+    .normalize("NFC")
+    .replace(/^https?:\/\/(www\.)?/i, "")
+    .replace(/[?#].*$/, "")
+    .replace(/\/+$/, "")
+    .replace(/[^\p{L}\p{N}./-]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function readDedupeState(statePath, date) {
+  try {
+    const raw = await readFile(statePath, "utf8");
+    const parsed = JSON.parse(raw);
+    const day = parsed.days?.[date] || {};
+    return {
+      version: 1,
+      days: {
+        [date]: {
+          links: Array.isArray(day.links) ? day.links : [],
+          titles: Array.isArray(day.titles) ? day.titles : [],
+          items: Array.isArray(day.items) ? day.items : []
+        }
+      }
+    };
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn(`[dedupe] Không đọc được state ${statePath}: ${error.message}. Tạo state mới.`);
+    }
+    return { version: 1, days: { [date]: { links: [], titles: [], items: [] } } };
+  }
+}
+
+function filterSeenItems(items, state, date) {
+  const day = state.days?.[date] || {};
+  const seenLinks = new Set((day.links || []).map(normalizeDedupeKey).filter(Boolean));
+  const seenTitles = new Set((day.titles || []).map(normalizeDedupeKey).filter(Boolean));
+  const fresh = items.filter((item) => {
+    const linkKey = normalizeDedupeKey(item.link);
+    const titleKey = normalizeDedupeKey(item.title || item.hook);
+    return !(linkKey && seenLinks.has(linkKey)) && !(titleKey && seenTitles.has(titleKey));
+  });
+  return fresh.map((item, index) => ({ ...item, index: index + 1 }));
+}
+
+async function writeDedupeState(statePath, date, slot, selectedItems) {
+  const state = await readDedupeState(statePath, date);
+  const day = state.days[date] || { links: [], titles: [], items: [] };
+  const links = new Set((day.links || []).map(normalizeDedupeKey).filter(Boolean));
+  const titles = new Set((day.titles || []).map(normalizeDedupeKey).filter(Boolean));
+  const existingItems = Array.isArray(day.items) ? day.items : [];
+  const addedItems = [];
+
+  for (const item of selectedItems) {
+    const linkKey = normalizeDedupeKey(item.link);
+    const titleKey = normalizeDedupeKey(item.title || item.hook);
+    if (linkKey) links.add(linkKey);
+    if (titleKey) titles.add(titleKey);
+    addedItems.push({
+      slot,
+      link: item.link,
+      title: item.title,
+      savedAt: new Date().toISOString()
+    });
+  }
+
+  const nextState = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    days: {
+      [date]: {
+        links: [...links],
+        titles: [...titles],
+        items: [...existingItems, ...addedItems]
+      }
+    }
+  };
+
+  await mkdir(path.dirname(statePath), { recursive: true });
+  await writeFile(statePath, JSON.stringify(nextState, null, 2), "utf8");
+  console.log(`[dedupe] Đã lưu ${selectedItems.length} tin vào ${statePath} cho ngày ${date}.`);
+}
+
+async function writeDedupeUpdatedMarker(markerPath, date, slot, selectedItems) {
+  await mkdir(path.dirname(markerPath), { recursive: true });
+  await writeFile(markerPath, JSON.stringify({
+    date,
+    slot,
+    savedCount: selectedItems.length,
+    updatedAt: new Date().toISOString()
+  }, null, 2), "utf8");
+  console.log(`[dedupe] Đã tạo marker cập nhật state: ${markerPath}.`);
 }
 
 function tag(block, name) {
@@ -633,6 +732,26 @@ async function main() {
   let items = parseItems(xml, window);
   if (items.length === 0) throw new Error("RSS returned no items; aborting render.");
   items = await enrichArticles(items);
+  const dedupeState = await readDedupeState(DEDUPE_STATE, now.date);
+  const beforeDedupeCount = items.length;
+  items = filterSeenItems(items, dedupeState, now.date);
+  const skippedCount = beforeDedupeCount - items.length;
+  console.log(`[dedupe] Bỏ qua ${skippedCount} tin đã dùng trong ngày ${now.date}. Còn ${items.length} tin mới.`);
+  if (items.length < NEWS_COUNT) {
+    const message = `Không đủ tin mới không trùng trong ngày ${now.date}: cần ${NEWS_COUNT}, còn ${items.length}. Skip render/upload.`;
+    console.log(`[dedupe] ${message}`);
+    await writeFile(path.join(outDir, "skip.json"), JSON.stringify({
+      source: RSS_URL,
+      generatedAt: new Date().toISOString(),
+      timezone: "Asia/Bangkok",
+      slot,
+      reason: "not_enough_unique_news",
+      required: NEWS_COUNT,
+      available: items.length,
+      skippedDuplicateCount: skippedCount
+    }, null, 2), "utf8");
+    return;
+  }
   items = items.slice(0, NEWS_COUNT).map((item, index) => ({
     ...item,
     index: index + 1,
@@ -671,6 +790,15 @@ async function main() {
       throw new Error(`Cannot upload because final.mp4 does not exist: ${output}`);
     }
     await uploadToPlatforms({ outDir, videoPath: output, dryRun: dryRunUpload });
+  }
+
+  if (dryRunUpload) {
+    console.log("[dedupe] Dry-run upload: không lưu state chống trùng tin.");
+  } else if (!uploadRequested) {
+    console.log("[dedupe] Không upload: không lưu state chống trùng tin.");
+  } else {
+    await writeDedupeState(DEDUPE_STATE, now.date, slot, items);
+    await writeDedupeUpdatedMarker(DEDUPE_UPDATED_MARKER, now.date, slot, items);
   }
 
   console.log(`Generated VnExpress package: ${outDir}`);

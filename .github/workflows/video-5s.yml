@@ -58,6 +58,27 @@ jobs:
           restore-keys: |
             video5s-dedupe-
 
+      - name: Log restored dedupe state
+        run: |
+          TODAY=$(TZ=Asia/Bangkok date +%F)
+          echo "=== Restored dedupe state for $TODAY ==="
+          if [ -f .vnexpress-state/seen-news.json ]; then
+            cat .vnexpress-state/seen-news.json
+            TODAY="$TODAY" node -e "const fs=require('fs'); const p='.vnexpress-state/seen-news.json'; const state=JSON.parse(fs.readFileSync(p,'utf8')); const day=(state.days||{})[process.env.TODAY]||{}; const links=Array.isArray(day.links)?day.links.length:0; const titles=Array.isArray(day.titles)?day.titles.length:0; console.log('[dedupe] '+process.env.TODAY+': links='+links+', titles='+titles);"
+          else
+            echo "[dedupe] No seen-news.json restored."
+            echo "[dedupe] $TODAY: links=0, titles=0"
+          fi
+
+          echo "=== Restored update marker ==="
+          if [ -f .vnexpress-state/updated.json ]; then
+            cat .vnexpress-state/updated.json
+          else
+            echo "[dedupe] No updated.json restored."
+          fi
+          rm -f .vnexpress-state/updated.json
+          echo "[dedupe] Cleared restored update marker before this run."
+
       # ── Maximize Build Space (Swap) ───────────────────────────────
       - name: Maximize Build Space
         run: |
@@ -182,8 +203,28 @@ jobs:
         run: |
           node scripts/vnexpress-hot-news.mjs ${{ steps.args.outputs.args }}
 
-      - name: Save dedupe state
+      - name: Log dedupe state before save
         if: always()
+        run: |
+          TODAY=$(TZ=Asia/Bangkok date +%F)
+          echo "=== Dedupe state before save for $TODAY ==="
+          if [ -f .vnexpress-state/seen-news.json ]; then
+            cat .vnexpress-state/seen-news.json
+            TODAY="$TODAY" node -e "const fs=require('fs'); const p='.vnexpress-state/seen-news.json'; const state=JSON.parse(fs.readFileSync(p,'utf8')); const day=(state.days||{})[process.env.TODAY]||{}; const links=Array.isArray(day.links)?day.links.length:0; const titles=Array.isArray(day.titles)?day.titles.length:0; console.log('[dedupe] '+process.env.TODAY+': links='+links+', titles='+titles);"
+          else
+            echo "[dedupe] No seen-news.json present."
+            echo "[dedupe] $TODAY: links=0, titles=0"
+          fi
+
+          echo "=== Current update marker ==="
+          if [ -f .vnexpress-state/updated.json ]; then
+            cat .vnexpress-state/updated.json
+          else
+            echo "[dedupe] No updated.json present; dedupe cache will not be saved."
+          fi
+
+      - name: Save dedupe state
+        if: ${{ success() && hashFiles('.vnexpress-state/updated.json') != '' }}
         uses: actions/cache/save@v4
         with:
           path: .vnexpress-state
