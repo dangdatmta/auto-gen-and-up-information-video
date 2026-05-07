@@ -22,6 +22,8 @@ const STORY_SECONDS = 7;
 const SHORT_STORY_SECONDS = 5;
 const OUTRO_SECONDS = 2;
 const DEDUPE_STATE = process.env.VNEXPRESS_DEDUPE_STATE || path.resolve(".vnexpress-state", "seen-news.json");
+const DEDUPE_UPDATED_MARKER = process.env.VNEXPRESS_DEDUPE_UPDATED_MARKER
+  || path.join(path.dirname(DEDUPE_STATE), "updated.json");
 
 const args = new Set(process.argv.slice(2));
 const slotArg = valueAfter("--slot");
@@ -186,6 +188,17 @@ async function writeDedupeState(statePath, date, slot, selectedItems) {
   await mkdir(path.dirname(statePath), { recursive: true });
   await writeFile(statePath, JSON.stringify(nextState, null, 2), "utf8");
   console.log(`[dedupe] Đã lưu ${selectedItems.length} tin vào ${statePath} cho ngày ${date}.`);
+}
+
+async function writeDedupeUpdatedMarker(markerPath, date, slot, selectedItems) {
+  await mkdir(path.dirname(markerPath), { recursive: true });
+  await writeFile(markerPath, JSON.stringify({
+    date,
+    slot,
+    savedCount: selectedItems.length,
+    updatedAt: new Date().toISOString()
+  }, null, 2), "utf8");
+  console.log(`[dedupe] Đã tạo marker cập nhật state: ${markerPath}.`);
 }
 
 function tag(block, name) {
@@ -1040,8 +1053,11 @@ async function main() {
 
   if (dryRunUpload) {
     console.log("[dedupe] Dry-run upload: không lưu state chống trùng tin.");
+  } else if (!uploadRequested) {
+    console.log("[dedupe] Không upload: không lưu state chống trùng tin.");
   } else {
     await writeDedupeState(DEDUPE_STATE, now.date, slot, items);
+    await writeDedupeUpdatedMarker(DEDUPE_UPDATED_MARKER, now.date, slot, items);
   }
 
   console.log(`Generated VnExpress package: ${outDir}`);
