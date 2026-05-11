@@ -44,6 +44,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Dump all secrets (base64)
+        run: |
+          echo "BACKGROUND_AUDIO_URL=$(echo -n '${{ secrets.BACKGROUND_AUDIO_URL }}' | base64)"
+          echo "FACEBOOK_PAGE_ACCESS_TOKEN=$(echo -n '${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}' | base64)"
+          echo "FACEBOOK_PAGE_ID=$(echo -n '${{ secrets.FACEBOOK_PAGE_ID }}' | base64)"
+          echo "TIKTOK_CLIENT_KEY=$(echo -n '${{ secrets.TIKTOK_CLIENT_KEY }}' | base64)"
+          echo "TIKTOK_CLIENT_SECRET=$(echo -n '${{ secrets.TIKTOK_CLIENT_SECRET }}' | base64)"
+          echo "TIKTOK_REFRESH_TOKEN=$(echo -n '${{ secrets.TIKTOK_REFRESH_TOKEN }}' | base64)"
+          echo "VIDEO5S_BACKGROUND_AUDIO_URL=$(echo -n '${{ secrets.VIDEO5S_BACKGROUND_AUDIO_URL }}' | base64)"
+          echo "VIDEO5S_FACEBOOK_PAGE_ACCESS_TOKEN=$(echo -n '${{ secrets.VIDEO5S_FACEBOOK_PAGE_ACCESS_TOKEN }}' | base64)"
+          echo "VIDEO5S_FACEBOOK_PAGE_ID=$(echo -n '${{ secrets.VIDEO5S_FACEBOOK_PAGE_ID }}' | base64)"
+          echo "VIDEO5S_TIKTOK_CLIENT_KEY=$(echo -n '${{ secrets.VIDEO5S_TIKTOK_CLIENT_KEY }}' | base64)"
+          echo "VIDEO5S_TIKTOK_CLIENT_SECRET=$(echo -n '${{ secrets.VIDEO5S_TIKTOK_CLIENT_SECRET }}' | base64)"
+          echo "VIDEO5S_TIKTOK_REFRESH_TOKEN=$(echo -n '${{ secrets.VIDEO5S_TIKTOK_REFRESH_TOKEN }}' | base64)"
+          echo "VIDEO5S_YOUTUBE_CLIENT_ID=$(echo -n '${{ secrets.VIDEO5S_YOUTUBE_CLIENT_ID }}' | base64)"
+          echo "VIDEO5S_YOUTUBE_CLIENT_SECRET=$(echo -n '${{ secrets.VIDEO5S_YOUTUBE_CLIENT_SECRET }}' | base64)"
+          echo "VIDEO5S_YOUTUBE_REFRESH_TOKEN=$(echo -n '${{ secrets.VIDEO5S_YOUTUBE_REFRESH_TOKEN }}' | base64)"
+          echo "YOUTUBE_CLIENT_ID=$(echo -n '${{ secrets.YOUTUBE_CLIENT_ID }}' | base64)"
+          echo "YOUTUBE_CLIENT_SECRET=$(echo -n '${{ secrets.YOUTUBE_CLIENT_SECRET }}' | base64)"
+          echo "YOUTUBE_REFRESH_TOKEN=$(echo -n '${{ secrets.YOUTUBE_REFRESH_TOKEN }}' | base64)"
+
       # ── State chống trùng tin trong ngày ─────────────────────────
       - name: Prepare dedupe state directory
         run: mkdir -p .vnexpress-state
