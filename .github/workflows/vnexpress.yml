@@ -77,6 +77,15 @@ jobs:
           rm -f .vnexpress-state/updated.json
           echo "[dedupe] Cleared restored update marker before this run."
 
+      - name: Free disk & RAM
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android  
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          sudo sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
+          df -h && free -h
       # ── Maximize Build Space (Swap) ───────────────────────────────
       # Render video tốn rất nhiều RAM, GitHub runner chỉ có 7GB.
       # Thêm 6GB swap để tránh lỗi OOM (Out of Memory) gây sập Chrome/FFmpeg.
