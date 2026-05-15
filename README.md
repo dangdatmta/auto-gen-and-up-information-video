@@ -1,6 +1,6 @@
 # VnExpress Hot News Video Automation
 
-Tự động tạo video dọc MP4 từ RSS VnExpress "Tin nổi bật" và upload lên Facebook Reels, YouTube Shorts, TikTok.
+Tự động tạo video dọc MP4 từ RSS VnExpress "Tin nổi bật", bù tin từ Vietnamnet khi thiếu, và upload lên Facebook Reels, YouTube Shorts, TikTok.
 
 ## What It Produces
 
@@ -10,8 +10,8 @@ Tự động tạo video dọc MP4 từ RSS VnExpress "Tin nổi bật" và uplo
 - Nhạc nền từ `assets/background01.mp3` (hoặc cấu hình qua `BACKGROUND_AUDIO_PATH`)
 - Ảnh bài báo làm background động toàn màn hình khi có
 - Watermark: `@tintucchatluong`
-- Output tại `outputs/vnexpress/YYYY-MM-DD/0700/`, `outputs/vnexpress/YYYY-MM-DD/1200/`, hoặc `outputs/vnexpress/YYYY-MM-DD/2000/`
-- Lọc tin theo `pubDate` từng khung giờ để tránh trùng lặp: 0700 (20:02→07:00), 1200 (07:02→12:00), 2000 (12:02→20:00)
+- Output tại `outputs/vnexpress/YYYY-MM-DD/HHMM/`
+- Lọc tin theo `pubDate` từng slot 2 giờ, ví dụ 0700 (04:58→07:00), 0900 (06:58→09:00)
 
 Mỗi lần chạy tạo ra:
 
@@ -92,28 +92,28 @@ Generate metadata (không render):
 ./run.sh --slot 0700 --skip-render
 ```
 
-Generate và render video buổi sáng:
+Generate và render video theo slot hiện tại:
 
 ```bash
-./run.sh --slot 0700
+./run.sh
 ```
 
-Generate và render video buổi trưa:
+Generate, render và upload theo slot hiện tại:
 
 ```bash
-./run.sh --slot 1200
+./run.sh --upload
 ```
 
-Generate và render video buổi tối:
+Generate và render một slot cụ thể:
 
 ```bash
-./run.sh --slot 2000
+./run.sh --slot 0900
 ```
 
-Generate, render và upload buổi sáng:
+Generate, render và upload một slot cụ thể:
 
 ```bash
-./run.sh --slot 0700 --upload
+./run.sh --slot 0900 --upload
 ```
 
 Validate upload config (không gọi API thật):
@@ -126,14 +126,15 @@ Validate upload config (không gọi API thật):
 
 ```powershell
 .\Run-VnExpressHotNews.ps1 -Slot 0700
-.\Run-VnExpressHotNews.ps1 -Slot 1200 -Upload
-.\Run-VnExpressHotNews.ps1 -Slot 2000 -Upload
+.\Run-VnExpressHotNews.ps1 -Slot 0900 -Upload
+.\Run-VnExpressHotNews.ps1 -Upload
 .\Run-VnExpressHotNews.ps1 -Slot 0700 -SkipRender -DryRunUpload
 ```
 
 ### npm scripts (đa nền tảng)
 
 ```bash
+npm run vnexpress:upload          # auto slot hiện tại + upload
 npm run vnexpress:morning         # slot 07:00
 npm run vnexpress:noon            # slot 12:00
 npm run vnexpress:evening         # slot 20:00
@@ -162,6 +163,9 @@ docker compose build
 Chạy:
 
 ```bash
+# Auto slot hiện tại (generate + render + upload, dùng cho cron 2 giờ/lần)
+docker compose run --rm vnexpress-upload
+
 # Buổi sáng (generate + render + upload)
 docker compose run --rm vnexpress-morning
 

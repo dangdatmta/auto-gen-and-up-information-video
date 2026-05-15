@@ -5,7 +5,23 @@ import path from "node:path";
 import process from "node:process";
 import { uploadToPlatforms, writeCaption } from "./upload-platforms.mjs";
 
-const RSS_URL = "https://vnexpress.net/rss/tin-noi-bat.rss";
+const NEWS_SOURCES = [
+  {
+    role: "primary",
+    key: "vnexpress",
+    name: "VnExpress",
+    url: "https://vnexpress.net/rss/tin-noi-bat.rss"
+  },
+  {
+    role: "fallback",
+    key: "vietnamnet",
+    name: "Vietnamnet",
+    url: "https://vietnamnet.vn/tin-tuc-24h.rss"
+  }
+];
+const PRIMARY_SOURCE = NEWS_SOURCES.find((source) => source.role === "primary") || NEWS_SOURCES[0];
+const FALLBACK_SOURCES = NEWS_SOURCES.filter((source) => source.role === "fallback");
+const RSS_URL = PRIMARY_SOURCE.url;
 // Đọc từ env var, fallback về assets/background01.mp3 trong thư mục repo
 const BACKGROUND_AUDIO =
   process.env.BACKGROUND_AUDIO_PATH ||
@@ -56,22 +72,23 @@ function bangkokParts(date = new Date()) {
 function currentSlot() {
   if (slotArg) return slotArg;
   const now = bangkokParts();
-  if (now.hour < 12) return "0700";
-  if (now.hour < 20) return "1200";
-  return "2000";
+  return `${String(now.hour).padStart(2, "0")}00`;
 }
 
 /**
  * Trả về khoảng thời gian [from, to] (ms epoch) mà bài viết phải có pubDate nằm trong đó.
- * Mỗi slot bao phủ đúng khoảng giờ của nó, với 2 phút overlap ở đầu để tránh bỏ sót.
+ * Mỗi slot HHMM bao phủ 2 giờ gần nhất trước mốc slot, với 2 phút overlap ở đầu để tránh bỏ sót.
  *
- *  0700: 20:02 hôm qua  →  07:00 hôm nay
- *  1200: 07:02 hôm nay  →  12:00 hôm nay
- *  2000: 12:02 hôm nay  →  20:00 hôm nay
+ *  0700: 04:58 hôm nay  →  07:00 hôm nay
+ *  0900: 06:58 hôm nay  →  09:00 hôm nay
+ *  0100: 22:58 hôm qua  →  01:00 hôm nay
  *
  * Nếu slot không khớp (ví dụ truyền tay) thì trả về null (không lọc).
  */
 function slotTimeWindow(slot) {
+  const match = String(slot || "").match(/^([01]\d|2[0-3])([0-5]\d)$/);
+  if (!match) return null;
+
   const nowMs = Date.now();
   // Lấy mốc đầu ngày Bangkok theo UTC offset +7
   const bangkokOffset = 7 * 60 * 60 * 1000;
@@ -79,22 +96,11 @@ function slotTimeWindow(slot) {
     Math.floor((nowMs + bangkokOffset) / (24 * 60 * 60 * 1000)) * (24 * 60 * 60 * 1000) - bangkokOffset
   );
 
-  const h = (hours, minutes = 0) => todayMidnightBangkok.getTime() + (hours * 60 + minutes) * 60 * 1000;
-
-  if (slot === "0700") {
-    // 20:02 hôm qua → 07:00 hôm nay
-    return { from: h(-3, 58), to: h(7, 0) }; // -3h58m = 20:02 hôm qua
-  }
-  if (slot === "1200") {
-    // 07:02 hôm nay → 12:00 hôm nay
-    return { from: h(7, 2), to: h(12, 0) };
-  }
-  if (slot === "2000") {
-    // 12:02 hôm nay → 20:00 hôm nay
-    return { from: h(12, 2), to: h(20, 0) };
-  }
-  // Slot không xác định → không lọc
-  return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const to = todayMidnightBangkok.getTime() + (hour * 60 + minute) * 60 * 1000;
+  const from = to - (2 * 60 + 2) * 60 * 1000;
+  return { from, to };
 }
 
 function decodeEntities(value = "") {
@@ -154,15 +160,28 @@ async function readDedupeState(statePath, date) {
   }
 }
 
-function filterSeenItems(items, state, date) {
+function dedupeItems(items, state, date, initialItems = []) {
   const day = state.days?.[date] || {};
   const seenLinks = new Set((day.links || []).map(normalizeDedupeKey).filter(Boolean));
   const seenTitles = new Set((day.titles || []).map(normalizeDedupeKey).filter(Boolean));
-  const fresh = items.filter((item) => {
+
+  for (const item of initialItems) {
     const linkKey = normalizeDedupeKey(item.link);
     const titleKey = normalizeDedupeKey(item.title || item.hook);
-    return !(linkKey && seenLinks.has(linkKey)) && !(titleKey && seenTitles.has(titleKey));
-  });
+    if (linkKey) seenLinks.add(linkKey);
+    if (titleKey) seenTitles.add(titleKey);
+  }
+
+  const fresh = [];
+  for (const item of items) {
+    const linkKey = normalizeDedupeKey(item.link);
+    const titleKey = normalizeDedupeKey(item.title || item.hook);
+    if ((linkKey && seenLinks.has(linkKey)) || (titleKey && seenTitles.has(titleKey))) continue;
+    if (linkKey) seenLinks.add(linkKey);
+    if (titleKey) seenTitles.add(titleKey);
+    fresh.push(item);
+  }
+
   return fresh.map((item, index) => ({ ...item, index: index + 1 }));
 }
 
@@ -244,6 +263,7 @@ function extractFirstHtml(html = "", patterns) {
 function extractArticleDetails(html = "") {
   const title = extractFirstHtml(html, [
     /<h1[^>]*class=["'][^"']*title-detail[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i,
+    /<h1[^>]*class=["'][^"']*content-detail-title[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i,
     /<h1[^>]*>([\s\S]*?)<\/h1>/i,
     /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
     /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i
@@ -252,6 +272,8 @@ function extractArticleDetails(html = "") {
     /<p[^>]*class=["'][^"']*description[^"']*["'][^>]*>([\s\S]*?)<\/p>/i,
     /<p[^>]*class=["'][^"']*lead[^"']*["'][^>]*>([\s\S]*?)<\/p>/i,
     /<h2[^>]*class=["'][^"']*sapo[^"']*["'][^>]*>([\s\S]*?)<\/h2>/i,
+    /<div[^>]*class=["'][^"']*content-detail-sapo[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+    /<h2[^>]*class=["'][^"']*content-detail-sapo[^"']*["'][^>]*>([\s\S]*?)<\/h2>/i,
     /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
     /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i
   ]);
@@ -262,8 +284,9 @@ function extractArticleDetails(html = "") {
  * Parse RSS XML và lọc theo khoảng pubDate của slot.
  * @param {string} xml
  * @param {{ from: number, to: number } | null} window - epoch ms, hoặc null để không lọc
+ * @param {{ key: string, name: string, url: string }} source
  */
-function parseItems(xml, window = null) {
+function parseItems(xml, window = null, source = PRIMARY_SOURCE) {
   const blocks = [...xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)].map((match) => match[0]);
   const seen = new Set();
   const allItems = [];
@@ -291,33 +314,21 @@ function parseItems(xml, window = null) {
       pubMs,
       category: stripHtml(tag(block, "category")),
       summary: stripHtml(descriptionRaw),
-      imageUrl: image
+      imageUrl: image,
+      sourceKey: source.key,
+      sourceName: source.name,
+      sourceUrl: source.url
     });
   }
 
-  // Lọc theo khoảng thời gian nếu có
-  let filtered = allItems;
-  if (window) {
-    filtered = allItems.filter((item) => {
+  const filtered = window
+    ? allItems.filter((item) => {
       if (Number.isNaN(item.pubMs)) return false; // bỏ qua nếu không parse được pubDate
       return item.pubMs >= window.from && item.pubMs <= window.to;
-    });
+    })
+    : allItems;
 
-    // Nếu không đủ NEWS_COUNT tin mới → fallback: lấy thêm từ đầu danh sách (tin mới nhất)
-    if (filtered.length < NEWS_COUNT) {
-      const filteredLinks = new Set(filtered.map((i) => i.link));
-      const extras = allItems.filter((i) => !filteredLinks.has(i.link));
-      const needed = NEWS_COUNT - filtered.length;
-      console.warn(
-        `[slot ${slotArg ?? "auto"}] Chỉ có ${filtered.length} tin trong khung giờ. ` +
-        `Bổ sung thêm ${Math.min(needed, extras.length)} tin gần nhất.`
-      );
-      filtered = [...filtered, ...extras.slice(0, needed)];
-    }
-  }
-
-  // Giới hạn & đánh lại index
-  return filtered.slice(0, NEWS_COUNT).map((item, i) => ({ ...item, index: i + 1 }));
+  return filtered.map((item, i) => ({ ...item, index: i + 1 }));
 }
 
 function limitWords(value, maxWords) {
@@ -357,6 +368,25 @@ async function enrichArticles(items) {
       };
     }
   }));
+}
+
+function emptySourceStats(source) {
+  return {
+    sourceName: source.name,
+    sourceUrl: source.url,
+    role: source.role,
+    parsed: 0,
+    afterDedupe: 0,
+    selected: 0,
+    skippedDuplicateCount: 0
+  };
+}
+
+async function loadSourceItems(source, window) {
+  const xml = await fetchText(source.url);
+  const parsed = parseItems(xml, window, source);
+  const enriched = await enrichArticles(parsed);
+  return { parsed, enriched };
 }
 
 function extensionFrom(url, contentType) {
@@ -441,7 +471,7 @@ function renderComposition(items) {
         <div class="accent accent-b"></div>
         <div class="scene-count">${String(item.index).padStart(2, "0")} / ${NEWS_COUNT}</div>
         <div class="content">
-          <div class="source-row"><span>VnExpress</span><span>${escapeHtml(formatPubDate(item.pubDate))}</span></div>
+          <div class="source-row"><span>${escapeHtml(item.sourceName || PRIMARY_SOURCE.name)}</span><span>${escapeHtml(formatPubDate(item.pubDate))}</span></div>
           <h1 class="hook-title" style="font-size:${titleSize}px">${wordSpans(item.hook || item.title)}</h1>
           <p class="lead" style="font-size:${leadSize}px">${escapeHtml(item.summary || item.title)}</p>
         </div>
@@ -455,7 +485,7 @@ function renderComposition(items) {
       <div class="intro-ring intro-ring-2"></div>
       <div class="intro-bar"></div>
       <div class="intro-inner">
-        <div class="intro-badge"><span>VnExpress</span></div>
+        <div class="intro-badge"><span>Tin nóng</span></div>
         <h1 class="intro-title">10 tin tức nóng nhất<br>trong các giờ qua</h1>
         <div class="intro-channel">${escapeHtml(WATERMARK)}</div>
         <div class="intro-divider"></div>
@@ -728,27 +758,54 @@ async function main() {
     console.log(`[slot ${slot}] Lọc tin từ ${fromStr} → ${toStr}`);
   }
 
-  const xml = await fetchText(RSS_URL);
-  let items = parseItems(xml, window);
-  if (items.length === 0) throw new Error("RSS returned no items; aborting render.");
-  items = await enrichArticles(items);
   const dedupeState = await readDedupeState(DEDUPE_STATE, now.date);
-  const beforeDedupeCount = items.length;
-  items = filterSeenItems(items, dedupeState, now.date);
-  const skippedCount = beforeDedupeCount - items.length;
-  console.log(`[dedupe] Bỏ qua ${skippedCount} tin đã dùng trong ngày ${now.date}. Còn ${items.length} tin mới.`);
+  const sourceStats = Object.fromEntries(NEWS_SOURCES.map((source) => [source.key, emptySourceStats(source)]));
+
+  const primaryResult = await loadSourceItems(PRIMARY_SOURCE, window);
+  let primaryItems = dedupeItems(primaryResult.enriched, dedupeState, now.date);
+  sourceStats[PRIMARY_SOURCE.key].parsed = primaryResult.parsed.length;
+  sourceStats[PRIMARY_SOURCE.key].afterDedupe = primaryItems.length;
+  sourceStats[PRIMARY_SOURCE.key].skippedDuplicateCount = primaryResult.enriched.length - primaryItems.length;
+
+  let items = primaryItems.slice(0, NEWS_COUNT);
+  sourceStats[PRIMARY_SOURCE.key].selected = items.length;
+  console.log(
+    `[dedupe] ${PRIMARY_SOURCE.name}: bỏ qua ${sourceStats[PRIMARY_SOURCE.key].skippedDuplicateCount} tin đã dùng/trùng trong ngày ${now.date}. ` +
+    `Còn ${primaryItems.length} tin mới.`
+  );
+
+  for (const source of FALLBACK_SOURCES) {
+    if (items.length >= NEWS_COUNT) break;
+    const needed = NEWS_COUNT - items.length;
+    console.log(`[fallback] ${PRIMARY_SOURCE.name} còn thiếu ${needed} tin. Lấy thêm từ ${source.name}.`);
+    const fallbackResult = await loadSourceItems(source, window);
+    const fallbackItems = dedupeItems(fallbackResult.enriched, dedupeState, now.date, items);
+    sourceStats[source.key].parsed = fallbackResult.parsed.length;
+    sourceStats[source.key].afterDedupe = fallbackItems.length;
+    sourceStats[source.key].skippedDuplicateCount = fallbackResult.enriched.length - fallbackItems.length;
+    const selected = fallbackItems.slice(0, needed);
+    sourceStats[source.key].selected = selected.length;
+    items = [...items, ...selected];
+    console.log(
+      `[fallback] ${source.name}: có ${fallbackItems.length} tin mới sau dedupe, chọn ${selected.length}/${needed}.`
+    );
+  }
+
   if (items.length < NEWS_COUNT) {
     const message = `Không đủ tin mới không trùng trong ngày ${now.date}: cần ${NEWS_COUNT}, còn ${items.length}. Skip render/upload.`;
     console.log(`[dedupe] ${message}`);
     await writeFile(path.join(outDir, "skip.json"), JSON.stringify({
       source: RSS_URL,
+      sources: NEWS_SOURCES.map((source) => ({ name: source.name, url: source.url, role: source.role })),
+      primarySource: { name: PRIMARY_SOURCE.name, url: PRIMARY_SOURCE.url },
+      fallbackSources: FALLBACK_SOURCES.map((source) => ({ name: source.name, url: source.url })),
       generatedAt: new Date().toISOString(),
       timezone: "Asia/Bangkok",
       slot,
       reason: "not_enough_unique_news",
       required: NEWS_COUNT,
       available: items.length,
-      skippedDuplicateCount: skippedCount
+      sourceStats
     }, null, 2), "utf8");
     return;
   }
@@ -763,6 +820,9 @@ async function main() {
   await writeFile(path.join(outDir, "index.html"), html, "utf8");
   await writeFile(path.join(outDir, "news.json"), JSON.stringify({
     source: RSS_URL,
+    sources: NEWS_SOURCES.map((source) => ({ name: source.name, url: source.url, role: source.role })),
+    primarySource: { name: PRIMARY_SOURCE.name, url: PRIMARY_SOURCE.url },
+    fallbackSources: FALLBACK_SOURCES.map((source) => ({ name: source.name, url: source.url })),
     generatedAt: new Date().toISOString(),
     timezone: "Asia/Bangkok",
     slot,
@@ -772,6 +832,7 @@ async function main() {
     durationSeconds: TOTAL_SECONDS,
     backgroundAudio: BACKGROUND_AUDIO,
     watermark: WATERMARK,
+    sourceStats,
     items
   }, null, 2), "utf8");
 

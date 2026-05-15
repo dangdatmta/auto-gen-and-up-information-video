@@ -1,6 +1,15 @@
 version: "3.9"
 
 services:
+  # ── Auto slot hiện tại: generate + render + upload (dùng cho cron 2 giờ/lần) ──
+  vnexpress-upload:
+    build: .
+    env_file: .env
+    volumes:
+      - ./assets:/app/assets
+      - ./outputs:/app/outputs
+    command: ["--upload"]
+
   # ── Sáng: generate + render + upload ──────────────────────────────────────
   vnexpress-morning:
     build: .

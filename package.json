@@ -6,6 +6,7 @@
   "scripts": {
     "vnexpress:generate": "node scripts/vnexpress-hot-news.mjs --skip-render",
     "vnexpress:render": "node scripts/vnexpress-hot-news.mjs",
+    "vnexpress:upload": "node scripts/vnexpress-hot-news.mjs --upload",
     "vnexpress:morning": "node scripts/vnexpress-hot-news.mjs --slot 0700",
     "vnexpress:noon": "node scripts/vnexpress-hot-news.mjs --slot 1200",
     "vnexpress:evening": "node scripts/vnexpress-hot-news.mjs --slot 2000",

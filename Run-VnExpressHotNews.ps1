@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("0700", "1200", "2000")]
+  [ValidatePattern("^\d{4}$")]
   [string]$Slot,
   [switch]$SkipRender,
   [switch]$Upload,

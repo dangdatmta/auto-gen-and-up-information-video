@@ -2,7 +2,8 @@
 # run.sh — Tương đương Run-VnExpressHotNews.ps1 cho macOS/Linux
 # Cách dùng:
 #   ./run.sh --slot 0700
-#   ./run.sh --slot 1900 --upload
+#   ./run.sh --slot 0900 --upload
+#   ./run.sh --upload
 #   ./run.sh --slot 0700 --skip-render
 #   ./run.sh --slot 0700 --skip-render --dry-run-upload
 set -euo pipefail
@@ -34,12 +35,12 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      echo "Usage: ./run.sh [--slot 0700|1200|2000] [--skip-render] [--upload] [--dry-run-upload]"
+      echo "Usage: ./run.sh [--slot HHMM] [--skip-render] [--upload] [--dry-run-upload]"
       exit 0
       ;;
     *)
       echo "Unknown argument: $1"
-      echo "Usage: ./run.sh [--slot 0700|1200|2000] [--skip-render] [--upload] [--dry-run-upload]"
+      echo "Usage: ./run.sh [--slot HHMM] [--skip-render] [--upload] [--dry-run-upload]"
       exit 1
       ;;
   esac
