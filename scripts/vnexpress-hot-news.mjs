@@ -694,9 +694,9 @@ function renderComposition(items, totalSeconds) {
     .segment i { display: block; width: 0; height: 100%; background: #e30613; }
     .scene-content { position: relative; z-index: 10; width: 100%; height: 100%; padding: 176px 52px 228px; display: grid; grid-template-rows: auto auto auto auto; align-content: center; justify-items: center; text-align: center; gap: 18px; }
     .category-badge { width: max-content; max-width: 100%; padding: 12px 18px; background: #fff; color: #070707; font-size: 28px; font-weight: 950; text-transform: uppercase; box-shadow: 8px 8px 0 #e30613; }
-    .hook-title { justify-self: center; margin: 0; color: #fff; line-height: .94; font-weight: 950; letter-spacing: 0; text-wrap: balance; text-transform: uppercase; text-align: center; text-shadow: 0 11px 36px rgba(0,0,0,.86); max-width: 960px; max-height: none; overflow: visible; overflow-wrap: anywhere; }
+    .hook-title { justify-self: center; margin: 0; color: #fff; line-height: .96; font-weight: 700; letter-spacing: 0; text-wrap: balance; text-transform: uppercase; text-align: center; text-shadow: 0 8px 26px rgba(0,0,0,.76); max-width: 960px; max-height: none; overflow: visible; overflow-wrap: anywhere; }
     .hook-title span { display: inline-block; transform-origin: 50% 80%; }
-    .hook-title .hot-word { color: #ffdd2d; text-shadow: 0 8px 30px rgba(0,0,0,.9), 0 0 24px rgba(227,6,19,.75); }
+    .hook-title .hot-word { color: #ffdd2d; text-shadow: 0 7px 24px rgba(0,0,0,.78), 0 0 14px rgba(227,6,19,.52); }
     .lead { justify-self: center; margin: 0; color: rgba(255,255,255,.94); line-height: 1.16; font-weight: 860; width: 100%; max-width: 960px; overflow: visible; display: block; text-align: center; text-wrap: pretty; text-shadow: 0 6px 24px rgba(0,0,0,.82); }
     .scene-count { position: absolute; right: 52px; bottom: 158px; z-index: 14; color: rgba(255,255,255,.9); font-weight: 950; font-size: 30px; text-shadow: 0 6px 24px rgba(0,0,0,.82); }
     .ticker { position: absolute; left: 0; right: 0; bottom: 76px; z-index: 16; height: 58px; overflow: hidden; background: #e30613; border-top: 4px solid #fff; border-bottom: 4px solid #fff; color: #fff; white-space: nowrap; }
@@ -791,7 +791,7 @@ function renderComposition(items, totalSeconds) {
           }, start + .72);
           master.to(hotWords, {
             color: "#fff46b",
-            textShadow: "0 8px 30px rgba(0,0,0,.9), 0 0 34px rgba(255,221,45,.9), 0 0 22px rgba(227,6,19,.75)",
+            textShadow: "0 7px 24px rgba(0,0,0,.78), 0 0 22px rgba(255,221,45,.68), 0 0 14px rgba(227,6,19,.52)",
             duration: .18,
             repeat: Math.max(0, Math.floor(duration / .36) - 1),
             yoyo: true,
@@ -857,8 +857,8 @@ function renderComposition(items, totalSeconds) {
             word.style.opacity = pulse ? ".82" : "1";
             word.style.transform = "translate(" + shake + "px," + (pulse ? -1 : 1) + "px) scale(" + (pulse ? 1.06 : 1) + ")";
             word.style.textShadow = pulse
-              ? "0 8px 30px rgba(0,0,0,.9), 0 0 34px rgba(255,221,45,.9), 0 0 22px rgba(227,6,19,.75)"
-              : "0 8px 30px rgba(0,0,0,.9), 0 0 24px rgba(227,6,19,.75)";
+              ? "0 7px 24px rgba(0,0,0,.78), 0 0 22px rgba(255,221,45,.68), 0 0 14px rgba(227,6,19,.52)"
+              : "0 7px 24px rgba(0,0,0,.78), 0 0 14px rgba(227,6,19,.52)";
           });
           scene.querySelectorAll(".segment i").forEach((segment, segmentIndex) => {
             segment.style.width = segmentIndex < index ? "100%" : segmentIndex === index ? (clamp(local / duration) * 100) + "%" : "0%";
