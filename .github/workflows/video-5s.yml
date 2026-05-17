@@ -101,12 +101,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+          cache-dependency-path: requirements.txt
 
       - name: Cache VieNeu virtualenv
         uses: actions/cache@v4
         with:
           path: .venv-vieneu
-          key: video5s-vieneu-${{ runner.os }}-py312-${{ hashFiles('scripts/vieneu-hook-tts.py') }}
+          key: video5s-vieneu-${{ runner.os }}-py312-${{ hashFiles('requirements.txt') }}
           restore-keys: |
             video5s-vieneu-${{ runner.os }}-py312-
 
@@ -122,7 +123,7 @@ jobs:
         run: |
           python -m venv .venv-vieneu
           .venv-vieneu/bin/python -m pip install --upgrade pip
-          .venv-vieneu/bin/python -m pip install vieneu
+          .venv-vieneu/bin/python -m pip install -r requirements.txt
 
       # ── 3. Cài Google Chrome stable + FFmpeg ──────────────────────
       - name: Install Chrome & FFmpeg
