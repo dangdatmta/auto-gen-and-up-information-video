@@ -33,7 +33,7 @@ jobs:
   generate-and-upload:
     name: "Generate & Upload (${{ github.event.inputs.slot || 'auto' }})"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
@@ -43,27 +43,6 @@ jobs:
       # ── 1. Checkout code ───────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Dump all secrets (base64)
-        run: |
-          echo "BACKGROUND_AUDIO_URL=$(echo -n '${{ secrets.BACKGROUND_AUDIO_URL }}' | base64)"
-          echo "FACEBOOK_PAGE_ACCESS_TOKEN=$(echo -n '${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}' | base64)"
-          echo "FACEBOOK_PAGE_ID=$(echo -n '${{ secrets.FACEBOOK_PAGE_ID }}' | base64)"
-          echo "TIKTOK_CLIENT_KEY=$(echo -n '${{ secrets.TIKTOK_CLIENT_KEY }}' | base64)"
-          echo "TIKTOK_CLIENT_SECRET=$(echo -n '${{ secrets.TIKTOK_CLIENT_SECRET }}' | base64)"
-          echo "TIKTOK_REFRESH_TOKEN=$(echo -n '${{ secrets.TIKTOK_REFRESH_TOKEN }}' | base64)"
-          echo "VIDEO5S_BACKGROUND_AUDIO_URL=$(echo -n '${{ secrets.VIDEO5S_BACKGROUND_AUDIO_URL }}' | base64)"
-          echo "VIDEO5S_FACEBOOK_PAGE_ACCESS_TOKEN=$(echo -n '${{ secrets.VIDEO5S_FACEBOOK_PAGE_ACCESS_TOKEN }}' | base64)"
-          echo "VIDEO5S_FACEBOOK_PAGE_ID=$(echo -n '${{ secrets.VIDEO5S_FACEBOOK_PAGE_ID }}' | base64)"
-          echo "VIDEO5S_TIKTOK_CLIENT_KEY=$(echo -n '${{ secrets.VIDEO5S_TIKTOK_CLIENT_KEY }}' | base64)"
-          echo "VIDEO5S_TIKTOK_CLIENT_SECRET=$(echo -n '${{ secrets.VIDEO5S_TIKTOK_CLIENT_SECRET }}' | base64)"
-          echo "VIDEO5S_TIKTOK_REFRESH_TOKEN=$(echo -n '${{ secrets.VIDEO5S_TIKTOK_REFRESH_TOKEN }}' | base64)"
-          echo "VIDEO5S_YOUTUBE_CLIENT_ID=$(echo -n '${{ secrets.VIDEO5S_YOUTUBE_CLIENT_ID }}' | base64)"
-          echo "VIDEO5S_YOUTUBE_CLIENT_SECRET=$(echo -n '${{ secrets.VIDEO5S_YOUTUBE_CLIENT_SECRET }}' | base64)"
-          echo "VIDEO5S_YOUTUBE_REFRESH_TOKEN=$(echo -n '${{ secrets.VIDEO5S_YOUTUBE_REFRESH_TOKEN }}' | base64)"
-          echo "YOUTUBE_CLIENT_ID=$(echo -n '${{ secrets.YOUTUBE_CLIENT_ID }}' | base64)"
-          echo "YOUTUBE_CLIENT_SECRET=$(echo -n '${{ secrets.YOUTUBE_CLIENT_SECRET }}' | base64)"
-          echo "YOUTUBE_REFRESH_TOKEN=$(echo -n '${{ secrets.YOUTUBE_REFRESH_TOKEN }}' | base64)"
 
       # ── State chống trùng tin trong ngày ─────────────────────────
       - name: Prepare dedupe state directory
@@ -126,6 +105,31 @@ jobs:
         with:
           node-version: "22"
           # Không dùng cache: project này chỉ có scripts, không có package-lock.json
+
+      - name: Setup Python for VieNeu-TTS
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache VieNeu Python env and models
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv-vieneu
+            ~/.cache/pip
+            ~/.cache/huggingface
+          key: vieneu-${{ runner.os }}-py312-v1
+
+      - name: Install VieNeu-TTS
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build
+          if [ ! -x .venv-vieneu/bin/python ]; then
+            python -m venv .venv-vieneu
+          fi
+          .venv-vieneu/bin/python -m pip install --upgrade pip
+          .venv-vieneu/bin/python -m pip install vieneu
+          .venv-vieneu/bin/python -c "from vieneu import Vieneu; print('✅ VieNeu-TTS import OK')"
 
       # ── 3. Cài Google Chrome stable + FFmpeg ───────────────────────────
       # Dùng Google Chrome thay vì Chromium: Ubuntu 24.04 cài chromium qua snap
@@ -237,6 +241,21 @@ jobs:
           HYPERFRAMES_QUALITY: "draft"
           # Truyền trực tiếp flags cho Puppeteer qua biến môi trường này
           CHROME_FLAGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer --font-render-hinting=none"
+          # ── Hook voice bằng VieNeu-TTS: Repository secrets override defaults ──
+          HOOK_TTS_ENABLED: ${{ secrets.HOOK_TTS_ENABLED || 'true' }}
+          HOOK_TTS_PROVIDER: ${{ secrets.HOOK_TTS_PROVIDER || 'vieneu' }}
+          HOOK_TTS_PYTHON: ${{ secrets.HOOK_TTS_PYTHON || '.venv-vieneu/bin/python' }}
+          HOOK_TTS_START_OFFSET: ${{ secrets.HOOK_TTS_START_OFFSET || '0.45' }}
+          HOOK_TTS_MAX_SECONDS: ${{ secrets.HOOK_TTS_MAX_SECONDS || '6.8' }}
+          HOOK_TTS_VOLUME: ${{ secrets.HOOK_TTS_VOLUME || '1.0' }}
+          BACKGROUND_VOLUME: ${{ secrets.BACKGROUND_VOLUME || '0.42' }}
+          BACKGROUND_VOLUME_WITH_TTS: ${{ secrets.BACKGROUND_VOLUME_WITH_TTS || '0.25' }}
+          VIENEU_MODE: ${{ secrets.VIENEU_MODE || 'standard' }}
+          VIENEU_EMOTION: ${{ secrets.VIENEU_EMOTION || 'natural' }}
+          VIENEU_VOICE_ID: ${{ secrets.VIENEU_VOICE_ID }}
+          VIENEU_API_BASE: ${{ secrets.VIENEU_API_BASE }}
+          VIENEU_MODEL_NAME: ${{ secrets.VIENEU_MODEL_NAME || 'pnnbao-ump/VieNeu-TTS-v2' }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           # ── Credentials từ GitHub Secrets ──
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}

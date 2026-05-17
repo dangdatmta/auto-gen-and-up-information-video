@@ -8,6 +8,7 @@ Tự động tạo video dọc MP4 từ RSS VnExpress "Tin nổi bật", bù tin
 - 10 cảnh tin tức, mỗi cảnh 8 giây
 - Màn hình subscribe/follow cuối video
 - Nhạc nền từ `assets/background01.mp3` (hoặc cấu hình qua `BACKGROUND_AUDIO_PATH`)
+- Có thể bật giọng đọc hook/title bằng VieNeu-TTS qua `HOOK_TTS_ENABLED=true`
 - Ảnh bài báo làm background động toàn màn hình khi có
 - Watermark: `@tintucchatluong`
 - Output tại `outputs/vnexpress/YYYY-MM-DD/HHMM/`
@@ -17,6 +18,7 @@ Mỗi lần chạy tạo ra:
 
 - `index.html` — HyperFrames HTML composition
 - `news.json` — metadata, hook, lead, đường dẫn ảnh đã tải
+- `assets/hook-01.wav`…`assets/hook-10.wav` — giọng đọc hook khi bật VieNeu-TTS
 - `caption.txt` — caption cố định cho mạng xã hội
 - `upload-report.json` — kết quả upload từng nền tảng
 - `upload-errors.json` — lỗi upload (nếu có)
@@ -31,6 +33,7 @@ Mỗi lần chạy tạo ra:
 - HyperFrames: `npx hyperframes`
 - File nhạc nền (xem phần cấu hình bên dưới)
 - `.env` copy từ `.env.example` với credentials OAuth/API và `UPLOAD_ENABLED=true`
+- Tuỳ chọn: Python env có VieNeu-TTS SDK nếu bật `HOOK_TTS_ENABLED=true`
 
 Kiểm tra HyperFrames:
 
@@ -81,6 +84,66 @@ BACKGROUND_AUDIO_PATH=/Users/yourname/music/background01.mp3
 # Windows
 BACKGROUND_AUDIO_PATH=E:\20.tainguyen\background01.mp3
 ```
+
+## Cấu hình giọng đọc hook VieNeu-TTS
+
+Mặc định giọng đọc hook tắt để không ảnh hưởng workflow hiện tại. Khi bật, script đọc `hook` của từng tin, xuất WAV vào `outputs/vnexpress/YYYY-MM-DD/HHMM/assets/hook-01.wav` đến `hook-10.wav`, ghi metadata vào `news.json`, và hạ volume nhạc nền khi có voice.
+Script tự nạp `.env` ở thư mục repo; biến môi trường export trực tiếp trong shell sẽ được ưu tiên hơn giá trị trong `.env`.
+
+```env
+HOOK_TTS_ENABLED=true
+HOOK_TTS_PROVIDER=vieneu
+HOOK_TTS_PYTHON=/path/to/python-with-vieneu
+VIENEU_MODE=standard
+VIENEU_EMOTION=natural
+VIENEU_VOICE_ID=
+HOOK_TTS_START_OFFSET=0.45
+HOOK_TTS_MAX_SECONDS=6.8
+HOOK_TTS_VOLUME=1.0
+BACKGROUND_VOLUME_WITH_TTS=0.25
+```
+
+Cài SDK trong Python env dùng để chạy:
+
+```bash
+pip install vieneu
+```
+
+Nếu chạy VieNeu server riêng, dùng remote mode:
+
+```env
+VIENEU_MODE=remote
+VIENEU_API_BASE=http://your-server:23333/v1
+VIENEU_MODEL_NAME=pnnbao-ump/VieNeu-TTS-v2
+```
+
+Nếu một hook TTS lỗi hoặc thiếu dependency, script log warning và vẫn tạo video không có voice cho cảnh đó.
+
+### GitHub Actions
+
+Không commit `.venv-vieneu` lên repo. Workflow `.github/workflows/vnexpress.yml` tự tạo Python venv, cài `vieneu`, cache pip/Hugging Face model, và truyền các biến `HOOK_TTS_*` cho job render/upload.
+Lần chạy đầu có thể lâu hơn vì phải cài dependency và tải model; các lần sau dùng cache.
+
+Các biến TTS có thể cấu hình trong Repository secrets. Nếu không set, workflow dùng default:
+
+```env
+HOOK_TTS_ENABLED=true
+HOOK_TTS_PROVIDER=vieneu
+HOOK_TTS_PYTHON=.venv-vieneu/bin/python
+HOOK_TTS_START_OFFSET=0.45
+HOOK_TTS_MAX_SECONDS=6.8
+HOOK_TTS_VOLUME=1.0
+BACKGROUND_VOLUME=0.42
+BACKGROUND_VOLUME_WITH_TTS=0.25
+VIENEU_MODE=standard
+VIENEU_EMOTION=natural
+VIENEU_VOICE_ID=
+VIENEU_API_BASE=
+VIENEU_MODEL_NAME=pnnbao-ump/VieNeu-TTS-v2
+HF_TOKEN=
+```
+
+`HF_TOKEN` là tuỳ chọn, dùng để tăng rate limit khi GitHub Actions tải model từ Hugging Face.
 
 ## Commands
 
