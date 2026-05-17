@@ -33,7 +33,7 @@ jobs:
   generate-and-upload:
     name: "Video 5s (${{ github.event.inputs.slot || 'auto' }})"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
@@ -95,6 +95,34 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Setup Python for hook TTS
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Cache VieNeu virtualenv
+        uses: actions/cache@v4
+        with:
+          path: .venv-vieneu
+          key: video5s-vieneu-${{ runner.os }}-py312-${{ hashFiles('scripts/vieneu-hook-tts.py') }}
+          restore-keys: |
+            video5s-vieneu-${{ runner.os }}-py312-
+
+      - name: Cache Hugging Face models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: video5s-hf-${{ runner.os }}-vieneu
+          restore-keys: |
+            video5s-hf-${{ runner.os }}-
+
+      - name: Install VieNeu TTS
+        run: |
+          python -m venv .venv-vieneu
+          .venv-vieneu/bin/python -m pip install --upgrade pip
+          .venv-vieneu/bin/python -m pip install vieneu
 
       # ── 3. Cài Google Chrome stable + FFmpeg ──────────────────────
       - name: Install Chrome & FFmpeg
@@ -191,6 +219,21 @@ jobs:
           VNEXPRESS_DEDUPE_STATE: ".vnexpress-state/seen-news.json"
           HYPERFRAMES_QUALITY: "draft"
           CHROME_FLAGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer --font-render-hinting=none"
+          HOOK_TTS_ENABLED: ${{ secrets.VIDEO5S_HOOK_TTS_ENABLED || 'true' }}
+          HOOK_TTS_PROVIDER: ${{ secrets.VIDEO5S_HOOK_TTS_PROVIDER || 'vieneu' }}
+          HOOK_TTS_PYTHON: ".venv-vieneu/bin/python"
+          HOOK_TTS_START_OFFSET: ${{ secrets.VIDEO5S_HOOK_TTS_START_OFFSET || '0.45' }}
+          HOOK_TTS_MAX_SECONDS: ${{ secrets.VIDEO5S_HOOK_TTS_MAX_SECONDS || '6.8' }}
+          HOOK_TTS_VOLUME: ${{ secrets.VIDEO5S_HOOK_TTS_VOLUME || '1.0' }}
+          BACKGROUND_VOLUME: ${{ secrets.VIDEO5S_BACKGROUND_VOLUME || '0.42' }}
+          BACKGROUND_VOLUME_WITH_TTS: ${{ secrets.VIDEO5S_BACKGROUND_VOLUME_WITH_TTS || '0.25' }}
+          VIENEU_MODE: ${{ secrets.VIDEO5S_VIENEU_MODE || 'standard' }}
+          VIENEU_EMOTION: ${{ secrets.VIDEO5S_VIENEU_EMOTION || 'natural' }}
+          VIENEU_VOICE_ID: ${{ secrets.VIDEO5S_VIENEU_VOICE_ID }}
+          VIENEU_API_BASE: ${{ secrets.VIDEO5S_VIENEU_API_BASE }}
+          VIENEU_MODEL_NAME: ${{ secrets.VIDEO5S_VIENEU_MODEL_NAME || 'pnnbao-ump/VieNeu-TTS-v2' }}
+          HF_TOKEN: ${{ secrets.VIDEO5S_HF_TOKEN }}
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.VIDEO5S_HF_TOKEN }}
           # ── Credentials từ GitHub Secrets ──
           FACEBOOK_PAGE_ID: ${{ secrets.VIDEO5S_FACEBOOK_PAGE_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.VIDEO5S_FACEBOOK_PAGE_ACCESS_TOKEN }}
