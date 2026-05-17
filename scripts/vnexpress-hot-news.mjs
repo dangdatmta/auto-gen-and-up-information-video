@@ -1,9 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { uploadToPlatforms, writeCaption } from "./upload-platforms.mjs";
+
+loadDotenv(path.resolve(".env"));
 
 const RSS_URL = "https://vnexpress.net/rss/tin-noi-bat.rss";
 // Đọc từ env var, fallback về assets/background01.mp3 trong thư mục repo
@@ -18,7 +20,7 @@ const MIN_NEWS_COUNT = 3;
 const MAX_NEWS_COUNT = 5;
 const CANDIDATE_COUNT = 12;
 const TOP_STORY_SECONDS = 7;
-const STORY_SECONDS = 5;
+const STORY_SECONDS = 7;
 const SHORT_STORY_SECONDS = 4;
 const OUTRO_SECONDS = 2;
 const SCENE_WIPE_LEAD_SECONDS = 0.62;
@@ -27,6 +29,16 @@ const SCENE_FADE_SECONDS = 0.26;
 const DEDUPE_STATE = process.env.VNEXPRESS_DEDUPE_STATE || path.resolve(".vnexpress-state", "seen-news.json");
 const DEDUPE_UPDATED_MARKER = process.env.VNEXPRESS_DEDUPE_UPDATED_MARKER
   || path.join(path.dirname(DEDUPE_STATE), "updated.json");
+const HOOK_TTS_ENABLED = envBool("HOOK_TTS_ENABLED", false);
+const HOOK_TTS_PROVIDER = process.env.HOOK_TTS_PROVIDER || "vieneu";
+const HOOK_TTS_START_OFFSET = envNumber("HOOK_TTS_START_OFFSET", 0.45);
+const HOOK_TTS_MAX_SECONDS = envNumber("HOOK_TTS_MAX_SECONDS", 6.8);
+const HOOK_TTS_VOLUME = envNumber("HOOK_TTS_VOLUME", 1.0);
+const BACKGROUND_VOLUME = envNumber("BACKGROUND_VOLUME", 0.42);
+const BACKGROUND_VOLUME_WITH_TTS = envNumber("BACKGROUND_VOLUME_WITH_TTS", 0.25);
+const VIENEU_MODE = process.env.VIENEU_MODE || "standard";
+const VIENEU_MODEL_NAME = process.env.VIENEU_MODEL_NAME || "pnnbao-ump/VieNeu-TTS-v2";
+const VIENEU_TTS_SCRIPT = path.resolve("scripts", "vieneu-hook-tts.py");
 
 const args = new Set(process.argv.slice(2));
 const slotArg = valueAfter("--slot");
@@ -37,6 +49,42 @@ const dryRunUpload = args.has("--dry-run-upload");
 function valueAfter(flag) {
   const index = process.argv.indexOf(flag);
   return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+function unquoteEnvValue(value) {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function loadDotenv(envPath) {
+  if (!existsSync(envPath)) return;
+  const content = readFileSync(envPath, "utf8");
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) continue;
+    const [, key, rawValue] = match;
+    if (process.env[key] !== undefined) continue;
+    process.env[key] = unquoteEnvValue(rawValue);
+  }
+}
+
+function envBool(name, fallback = false) {
+  const value = process.env[name];
+  if (value === undefined || value === "") return fallback;
+  return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
+}
+
+function envNumber(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function bangkokParts(date = new Date()) {
@@ -551,6 +599,155 @@ async function downloadImages(items, imageDir) {
   return hydrated;
 }
 
+function audioDurationSeconds(filePath) {
+  if (!commandExists("ffprobe")) return null;
+  const result = spawnSync("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration",
+    "-of", "default=noprint_wrappers=1:nokey=1",
+    filePath
+  ], { encoding: "utf8" });
+  if (result.status !== 0) return null;
+  const duration = Number(result.stdout.trim());
+  return Number.isFinite(duration) ? duration : null;
+}
+
+function atempoFilter(speed) {
+  const factors = [];
+  let remaining = speed;
+  while (remaining > 2) {
+    factors.push(2);
+    remaining /= 2;
+  }
+  factors.push(Math.max(0.5, Math.min(2, remaining)));
+  return factors.map((factor) => `atempo=${factor.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`).join(",");
+}
+
+async function fitAudioDuration(filePath, maxSeconds) {
+  const duration = audioDurationSeconds(filePath);
+  if (!duration || duration <= maxSeconds) return duration;
+  if (!commandExists("ffmpeg")) {
+    console.warn(`[tts] ${path.basename(filePath)} dài ${duration.toFixed(2)}s nhưng ffmpeg không sẵn sàng để fit về ${maxSeconds}s.`);
+    return duration;
+  }
+  const tempPath = `${filePath}.tmp.wav`;
+  const speed = duration / maxSeconds;
+  const result = spawnSync("ffmpeg", [
+    "-y",
+    "-i", filePath,
+    "-filter:a", atempoFilter(speed),
+    "-ar", "24000",
+    "-ac", "1",
+    tempPath
+  ], { encoding: "utf8" });
+  if (result.status !== 0) {
+    console.warn(`[tts] Không thể rút ngắn ${path.basename(filePath)}: ${result.stderr || result.stdout}`);
+    return duration;
+  }
+  await rename(tempPath, filePath);
+  return audioDurationSeconds(filePath) || maxSeconds;
+}
+
+function pythonCommand() {
+  const configured = process.env.HOOK_TTS_PYTHON;
+  if (configured) return configured;
+  if (commandExists("python3")) return "python3";
+  return "python";
+}
+
+function hookAudioMaxSeconds(item) {
+  const sceneBudget = Number(item.durationSeconds) - HOOK_TTS_START_OFFSET - SCENE_FADE_SECONDS;
+  return Math.max(0.5, Math.min(HOOK_TTS_MAX_SECONDS, sceneBudget));
+}
+
+async function synthesizeHookTts(items, assetDir) {
+  if (!HOOK_TTS_ENABLED) return items;
+  if (HOOK_TTS_PROVIDER !== "vieneu") {
+    console.warn(`[tts] HOOK_TTS_PROVIDER=${HOOK_TTS_PROVIDER} chưa được hỗ trợ. Bỏ qua hook TTS.`);
+    return items;
+  }
+  await mkdir(assetDir, { recursive: true });
+  const py = pythonCommand();
+  if (!commandExists(py) || !existsSync(VIENEU_TTS_SCRIPT)) {
+    console.warn(`[tts] Không tìm thấy Python hoặc ${VIENEU_TTS_SCRIPT}. Bỏ qua hook TTS.`);
+    return items;
+  }
+
+  const jobs = items.map((item) => {
+    const filename = `hook-${String(item.index).padStart(2, "0")}.wav`;
+    return {
+      item,
+      filename,
+      output: path.join(assetDir, filename),
+      text: item.hook || item.title
+    };
+  });
+  const manifestPath = path.join(assetDir, "hook-tts-input.json");
+  await writeFile(manifestPath, JSON.stringify(
+    jobs.map((job) => ({ text: job.text, output: job.output })),
+    null,
+    2
+  ), "utf8");
+
+  const baseArgs = [
+    VIENEU_TTS_SCRIPT,
+    "--mode", VIENEU_MODE,
+    "--emotion", process.env.VIENEU_EMOTION || "natural"
+  ];
+  if (process.env.VIENEU_VOICE_ID) baseArgs.push("--voice-id", process.env.VIENEU_VOICE_ID);
+  if (process.env.VIENEU_API_BASE) baseArgs.push("--api-base", process.env.VIENEU_API_BASE);
+  if (VIENEU_MODEL_NAME) baseArgs.push("--model-name", VIENEU_MODEL_NAME);
+
+  const result = spawnSync(py, [
+    ...baseArgs,
+    "--input-json", manifestPath
+  ], { encoding: "utf8", shell: false });
+  if (result.status !== 0) {
+    const error = (result.stderr || result.stdout || "").trim();
+    console.warn(`[tts] Không tạo được batch hook voice: ${error}`);
+    for (const job of jobs) {
+      const single = spawnSync(py, [
+        ...baseArgs,
+        "--text", job.text,
+        "--output", job.output
+      ], { encoding: "utf8", shell: false });
+      if (single.status !== 0) {
+        job.error = (single.stderr || single.stdout || "").trim() || `VieNeu helper exited with code ${single.status}`;
+        console.warn(`[tts] Không tạo được hook voice cho cảnh ${job.item.index}: ${job.error}`);
+      }
+    }
+  }
+
+  return Promise.all(items.map(async (item) => {
+    const job = jobs.find((candidate) => candidate.item.index === item.index);
+    if (job?.error) {
+      return {
+        ...item,
+        hookTtsProvider: HOOK_TTS_PROVIDER,
+        hookTtsError: job.error
+      };
+    }
+    if (!job || !existsSync(job.output)) {
+      const error = `Missing synthesized audio for item ${item.index}`;
+      console.warn(`[tts] ${error}`);
+      return {
+        ...item,
+        hookTtsProvider: HOOK_TTS_PROVIDER,
+        hookTtsError: error
+      };
+    }
+    const maxSeconds = hookAudioMaxSeconds(item);
+    const duration = await fitAudioDuration(job.output, maxSeconds);
+    return {
+      ...item,
+      hookAudio: `assets/${job.filename}`,
+      hookAudioDurationSeconds: duration,
+      hookAudioStartSeconds: item.startSeconds + HOOK_TTS_START_OFFSET,
+      hookTtsProvider: HOOK_TTS_PROVIDER
+    };
+  }));
+}
+
 function escapeHtml(value = "") {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -617,6 +814,14 @@ function wordSpans(value = "", keyword = "") {
 }
 
 function renderComposition(items, totalSeconds) {
+  const hasHookAudio = items.some((item) => Boolean(item.hookAudio));
+  const backgroundVolume = hasHookAudio ? BACKGROUND_VOLUME_WITH_TTS : BACKGROUND_VOLUME;
+  const hookAudioHtml = items.map((item) => {
+    if (!item.hookAudio) return "";
+    const start = item.startSeconds + HOOK_TTS_START_OFFSET;
+    const duration = item.hookAudioDurationSeconds || hookAudioMaxSeconds(item);
+    return `<audio class="hook-audio" data-start="${start}" data-duration="${duration}" data-track-index="20" data-volume="${HOOK_TTS_VOLUME}" src="${escapeHtml(item.hookAudio)}"></audio>`;
+  }).filter(Boolean).join("\n    ");
   const tickerText = items
     .map((item) => displayText(`${item.visualLabel || "TIN MỚI"}: ${item.frameHook || item.viralHook || item.title}`))
     .join("   /   ");
@@ -739,7 +944,8 @@ function renderComposition(items, totalSeconds) {
     </section>
     <div class="watermark">${escapeHtml(WATERMARK)}</div>
     <div class="progress"><div class="progress-inner"></div></div>
-    <audio id="background-music" data-start="0" data-duration="${totalSeconds}" data-track-index="10" data-volume="0.42" src="assets/background01.mp3"></audio>
+    <audio id="background-music" data-start="0" data-duration="${totalSeconds}" data-track-index="10" data-volume="${backgroundVolume}" src="assets/background01.mp3"></audio>
+    ${hookAudioHtml}
   </div>
   <script>
     window.__hfDuration = ${totalSeconds};
@@ -908,6 +1114,7 @@ function formatPubDate(pubDate) {
 }
 
 function commandExists(command) {
+  if (command.includes("/") || command.includes("\\")) return existsSync(command);
   const checker = process.platform === "win32" ? "where" : "which";
   const result = spawnSync(checker, [command], { encoding: "utf8" });
   return result.status === 0 && result.stdout.trim().length > 0;
@@ -990,6 +1197,7 @@ async function main() {
   }
   items = selectStories(items, slot);
   items = await downloadImages(items, imageDir);
+  items = await synthesizeHookTts(items, imageDir);
   const storySeconds = items.reduce((sum, item) => sum + item.durationSeconds, 0);
   const totalSeconds = storySeconds + OUTRO_SECONDS;
   const primary = items[0];
@@ -1037,6 +1245,15 @@ async function main() {
     fps: FPS,
     durationSeconds: totalSeconds,
     backgroundAudio: BACKGROUND_AUDIO,
+    hookTts: {
+      enabled: HOOK_TTS_ENABLED,
+      provider: HOOK_TTS_PROVIDER,
+      mode: VIENEU_MODE,
+      startOffsetSeconds: HOOK_TTS_START_OFFSET,
+      maxSeconds: HOOK_TTS_MAX_SECONDS,
+      volume: HOOK_TTS_VOLUME,
+      backgroundVolume: items.some((item) => Boolean(item.hookAudio)) ? BACKGROUND_VOLUME_WITH_TTS : BACKGROUND_VOLUME
+    },
     watermark: WATERMARK,
     experiment,
     items

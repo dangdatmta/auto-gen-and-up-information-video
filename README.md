@@ -8,6 +8,7 @@ Tự động tạo video dọc MP4 từ RSS VnExpress "Tin nổi bật" và uplo
 - 3-5 cảnh tin tức, xếp theo `viralScore`; tin mạnh nhất mở ngay frame đầu
 - Màn hình subscribe/follow cuối video
 - Nhạc nền từ `assets/background01.mp3` (hoặc cấu hình qua `BACKGROUND_AUDIO_PATH`)
+- Có thể bật giọng đọc hook/title cho từng cảnh bằng VieNeu-TTS qua `HOOK_TTS_ENABLED=true`
 - Ảnh bài báo làm background động toàn màn hình khi có
 - Watermark: `@tintucchatluong`
 - Output tại `outputs/vnexpress/YYYY-MM-DD/0700/`, `outputs/vnexpress/YYYY-MM-DD/1200/`, hoặc `outputs/vnexpress/YYYY-MM-DD/2000/`
@@ -31,6 +32,7 @@ Mỗi lần chạy tạo ra:
 - FFmpeg và FFprobe trên PATH
 - HyperFrames: `npx hyperframes`
 - File nhạc nền (xem phần cấu hình bên dưới)
+- Tuỳ chọn: Python env có VieNeu-TTS SDK nếu bật `HOOK_TTS_ENABLED=true`
 - `.env` copy từ `.env.example` với credentials OAuth/API và `UPLOAD_ENABLED=true`
 
 Kiểm tra HyperFrames:
@@ -82,6 +84,37 @@ BACKGROUND_AUDIO_PATH=/Users/yourname/music/background01.mp3
 # Windows
 BACKGROUND_AUDIO_PATH=E:\20.tainguyen\background01.mp3
 ```
+
+## Cấu hình giọng đọc hook
+
+Local mặc định tắt TTS. Bật trong `.env` khi muốn tạo file voice cho từng cảnh:
+
+```env
+HOOK_TTS_ENABLED=true
+HOOK_TTS_PROVIDER=vieneu
+HOOK_TTS_PYTHON=/path/to/python-with-vieneu
+HOOK_TTS_START_OFFSET=0.45
+HOOK_TTS_MAX_SECONDS=6.8
+HOOK_TTS_VOLUME=1.0
+BACKGROUND_VOLUME=0.42
+BACKGROUND_VOLUME_WITH_TTS=0.25
+VIENEU_MODE=standard
+VIENEU_EMOTION=natural
+VIENEU_VOICE_ID=
+VIENEU_API_BASE=
+VIENEU_MODEL_NAME=pnnbao-ump/VieNeu-TTS-v2
+```
+
+Ví dụ tạo Python env riêng:
+
+```bash
+python3 -m venv .venv-vieneu
+.venv-vieneu/bin/python -m pip install --upgrade pip
+.venv-vieneu/bin/python -m pip install vieneu
+HOOK_TTS_ENABLED=true HOOK_TTS_PYTHON=.venv-vieneu/bin/python ./run.sh --slot 0700 --skip-render
+```
+
+Không commit `.venv-vieneu/` hoặc `.vnexpress-state/`. Khi bật TTS, `news.json` sẽ có block `hookTts`, từng item có `hookAudio`, và `index.html` sẽ có các `<audio class="hook-audio">` bắt đầu theo `item.startSeconds + HOOK_TTS_START_OFFSET`.
 
 ## Commands
 
@@ -191,6 +224,12 @@ docker compose run --rm vnexpress-morning --slot 0700 --skip-render
 - **YouTube**: upload Shorts public với metadata sinh theo tin dẫn đầu.
 - **TikTok**: dùng `SELF_ONLY`; thất bại nếu tài khoản creator không hỗ trợ privacy option đó.
 - Nếu một nền tảng lỗi, các nền tảng còn lại vẫn tiếp tục; lỗi được ghi vào `upload-errors.json`.
+
+## GitHub Actions Video 5s
+
+Workflow `.github/workflows/video-5s.yml` chạy trên nhánh `feature/video-5s`, dùng secrets prefix riêng `VIDEO5S_*` cho cả upload và TTS. TTS bật mặc định trên CI bằng `VIDEO5S_HOOK_TTS_ENABLED` fallback `true`; có thể tắt bằng secret `VIDEO5S_HOOK_TTS_ENABLED=false`.
+
+Các secret TTS chính: `VIDEO5S_HOOK_TTS_PROVIDER`, `VIDEO5S_HOOK_TTS_START_OFFSET`, `VIDEO5S_HOOK_TTS_MAX_SECONDS`, `VIDEO5S_HOOK_TTS_VOLUME`, `VIDEO5S_BACKGROUND_VOLUME`, `VIDEO5S_BACKGROUND_VOLUME_WITH_TTS`, `VIDEO5S_VIENEU_MODE`, `VIDEO5S_VIENEU_EMOTION`, `VIDEO5S_VIENEU_VOICE_ID`, `VIDEO5S_VIENEU_API_BASE`, `VIDEO5S_VIENEU_MODEL_NAME`, `VIDEO5S_HF_TOKEN`.
 
 ## Notes
 
